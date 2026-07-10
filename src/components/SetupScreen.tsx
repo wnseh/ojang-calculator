@@ -90,14 +90,38 @@ export function SetupScreen({
         </Row>
         {config.players.map((p, i) => (
           <Row key={p.id} label={`${i + 1}번`}>
-            <input
-              className="name-input"
-              value={p.name}
-              placeholder={`플레이어${i + 1}`}
-              onChange={(e) => setPlayerName(p.id, e.target.value)}
-            />
+            <div className="player-row">
+              <input
+                className="name-input"
+                value={p.name}
+                placeholder={`플레이어${i + 1}`}
+                onChange={(e) => setPlayerName(p.id, e.target.value)}
+              />
+              <div className="handi-input">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={config.handicaps[p.id] ?? 0}
+                  aria-label={`${p.name} 핸디`}
+                  onChange={(e) =>
+                    set({
+                      handicaps: {
+                        ...config.handicaps,
+                        [p.id]: Math.max(0, Number(e.target.value) || 0),
+                      },
+                    })
+                  }
+                />
+                <span>타</span>
+              </div>
+            </div>
           </Row>
         ))}
+        <p className="hint">
+          이름 옆 숫자는 <b>받는 핸디 타수</b>. 쌍별 차이가 자동 적용되어 라운드 시작부터 누적
+          손익에 반영됩니다. 예) 나 0타, 상대 10타 → 상대 +50,000 / 나 −50,000 (타당 5천 기준)
+        </p>
       </Section>
 
       <Section title="금액">
@@ -218,35 +242,6 @@ export function SetupScreen({
             <MoneyInput value={config.longest.amount} onChange={(v) => setLongest({ amount: v })} />
           </Row>
         )}
-      </Section>
-
-      <Section title="핸디 (받는 타수)">
-        {config.players.map((p) => (
-          <Row key={p.id} label={p.name}>
-            <div className="money-input">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={1}
-                value={config.handicaps[p.id] ?? 0}
-                onChange={(e) =>
-                  set({
-                    handicaps: {
-                      ...config.handicaps,
-                      [p.id]: Math.max(0, Number(e.target.value) || 0),
-                    },
-                  })
-                }
-              />
-              <span>타</span>
-            </div>
-          </Row>
-        ))}
-        <p className="hint">
-          각자 받는 핸디 타수만 적으면 쌍별 차이가 자동 적용됩니다. 예) 나 0타, 상대 10타 →
-          내가 상대에게 10타 × 타당 금액을 주는 것으로 라운드 시작부터 누적 손익에 반영.
-        </p>
       </Section>
 
       <Section title="기타">
