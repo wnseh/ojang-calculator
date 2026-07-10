@@ -26,11 +26,13 @@ export default function App() {
   if (state.screen === 'setup' || !state.config || !settlement) {
     return (
       <SetupScreen
-        onStart={(config) =>
+        onStart={(config, meta) =>
           dispatch({
             type: 'START_ROUND',
             config,
             startedAt: new Date().toISOString().slice(0, 10),
+            club: meta.club,
+            course: meta.course,
           })
         }
         onShowHistory={() => dispatch({ type: 'SET_SCREEN', screen: 'history' })}

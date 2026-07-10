@@ -21,6 +21,8 @@ export function LedgerScreen({
   const playedHoles = state.holes.filter((h) => isHoleComplete(config, h))
   const name = (id: string) => config.players.find((p) => p.id === id)?.name ?? id
 
+  const place = [state.club, state.course].filter(Boolean).join(' · ')
+
   const copyShareText = async () => {
     const text = buildShareText(
       config,
@@ -28,6 +30,7 @@ export function LedgerScreen({
       settlement,
       state.startedAt ?? new Date().toISOString().slice(0, 10),
       state.memo,
+      place || undefined,
     )
     try {
       await navigator.clipboard.writeText(text)
@@ -65,6 +68,8 @@ export function LedgerScreen({
       config,
       holes: state.holes,
       memo: state.memo,
+      club: state.club,
+      course: state.course,
     }
     if (editing) updateInHistory(entry)
     else addToHistory(entry)
@@ -83,6 +88,7 @@ export function LedgerScreen({
           ← 홀 입력
         </button>
         <ThemeToggle />
+        {place && <span className="subtitle">{place}</span>}
       </header>
 
       {settlement.warnings.map((w) => (

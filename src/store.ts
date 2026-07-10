@@ -11,6 +11,10 @@ export interface AppState {
   memo: string
   /** 라운드 시작 날짜 (공유 텍스트용) */
   startedAt: string | null
+  /** 골프장 이름 (선택) */
+  club: string
+  /** 시작 코스 (선택, 예: 동코스) */
+  course: string
   /** 히스토리에서 다시 연 라운드면 해당 항목 id — 종료 시 새로 추가하지 않고 갱신 */
   editingHistoryId: string | null
   /** 라운드 시작 직후 티샷 순서 뽑기 팝업 표시 여부 */
@@ -24,12 +28,14 @@ export const initialState: AppState = {
   currentHole: 1,
   memo: '',
   startedAt: null,
+  club: '',
+  course: '',
   editingHistoryId: null,
   showTeeOrder: false,
 }
 
 export type Action =
-  | { type: 'START_ROUND'; config: RuleConfig; startedAt: string }
+  | { type: 'START_ROUND'; config: RuleConfig; startedAt: string; club?: string; course?: string }
   | {
       type: 'RESUME_ROUND'
       config: RuleConfig
@@ -37,6 +43,8 @@ export type Action =
       memo: string
       startedAt: string
       historyId: string
+      club?: string
+      course?: string
     }
   | { type: 'SET_SCREEN'; screen: Screen }
   | { type: 'GO_HOLE'; holeNo: number }
@@ -70,6 +78,8 @@ export function reducer(state: AppState, action: Action): AppState {
         currentHole: 1,
         memo: '',
         startedAt: action.startedAt,
+        club: action.club ?? '',
+        course: action.course ?? '',
         editingHistoryId: null,
         showTeeOrder: true,
       }
@@ -81,6 +91,8 @@ export function reducer(state: AppState, action: Action): AppState {
         currentHole: 1,
         memo: action.memo,
         startedAt: action.startedAt,
+        club: action.club ?? '',
+        course: action.course ?? '',
         editingHistoryId: action.historyId,
         showTeeOrder: false,
       }

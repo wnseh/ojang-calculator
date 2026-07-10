@@ -11,9 +11,11 @@ export function buildShareText(
   settlement: Settlement,
   dateStr: string,
   memo?: string,
+  place?: string,
 ): string {
   const lines: string[] = []
   lines.push(`⛳ 오장 정산 (${dateStr})`)
+  if (place) lines.push(place)
   lines.push(`타당 ${fmt(config.strokeValue)}원 · ${config.players.length}인`)
   lines.push('')
 

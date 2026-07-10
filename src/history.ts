@@ -9,6 +9,10 @@ export interface HistoryEntry {
   config: RuleConfig
   holes: HoleResult[]
   memo: string
+  /** 골프장 이름 (구버전 기록에는 없을 수 있음) */
+  club?: string
+  /** 시작 코스 */
+  course?: string
 }
 
 const HISTORY_KEY = 'ojang-history-v1'

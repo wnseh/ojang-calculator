@@ -8,10 +8,12 @@ export function SetupScreen({
   onStart,
   onShowHistory,
 }: {
-  onStart: (config: RuleConfig) => void
+  onStart: (config: RuleConfig, meta: { club: string; course: string }) => void
   onShowHistory: () => void
 }) {
   const [config, setConfig] = useState<RuleConfig>(() => defaultConfig())
+  const [club, setClub] = useState('')
+  const [course, setCourse] = useState('')
 
   const set = (patch: Partial<RuleConfig>) => setConfig((c) => ({ ...c, ...patch }))
   const setDouble = (patch: Partial<RuleConfig['doubleRule']>) =>
@@ -42,7 +44,7 @@ export function SetupScreen({
       ...p,
       name: p.name.trim() || `플레이어${i + 1}`,
     }))
-    onStart({ ...config, players })
+    onStart({ ...config, players }, { club: club.trim(), course: course.trim() })
   }
 
   return (
@@ -55,6 +57,25 @@ export function SetupScreen({
         <ThemeToggle />
         <span className="subtitle">라운드 시작 전 룰을 확인하세요</span>
       </header>
+
+      <Section title="라운드 정보 (선택)">
+        <Row label="골프장">
+          <input
+            className="name-input"
+            value={club}
+            placeholder="예) 레이크힐스CC"
+            onChange={(e) => setClub(e.target.value)}
+          />
+        </Row>
+        <Row label="시작 코스">
+          <input
+            className="name-input"
+            value={course}
+            placeholder="예) 동코스"
+            onChange={(e) => setCourse(e.target.value)}
+          />
+        </Row>
+      </Section>
 
       <Section title="플레이어">
         <Row label="인원">
