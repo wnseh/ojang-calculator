@@ -965,6 +965,55 @@ textarea {
   margin-top: 6px;
 }
 
+/* ---------- local rules ---------- */
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.rule-row input[type='checkbox'] {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  accent-color: var(--green);
+}
+
+.rule-row .rule-text {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 14px;
+}
+
+.rules-view {
+  list-style: none;
+  text-align: left;
+  margin-bottom: 6px;
+}
+
+.rules-view li {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 14px;
+}
+
+.rules-view.small {
+  margin-top: 8px;
+}
+
+.rules-view.small li {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 6px 8px;
+}
+
 .card-actions > button {
   flex: 1;
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { defaultConfig, defaultPlayers } from '../engine/defaults'
 import type { RuleConfig } from '../engine/types'
+import { loadRulePresets, saveRulePresets, type LocalRulePreset } from '../localrules'
 import { MoneyInput, Row, Section, Segmented, Toggle } from './controls'
 import { ThemeToggle } from './ThemeToggle'
 
@@ -8,12 +9,37 @@ export function SetupScreen({
   onStart,
   onShowHistory,
 }: {
-  onStart: (config: RuleConfig, meta: { club: string; course: string }) => void
+  onStart: (config: RuleConfig, meta: { club: string; course: string; localRules: string[] }) => void
   onShowHistory: () => void
 }) {
   const [config, setConfig] = useState<RuleConfig>(() => defaultConfig())
   const [club, setClub] = useState('')
   const [course, setCourse] = useState('')
+  const [rulePresets, setRulePresets] = useState<LocalRulePreset[]>(loadRulePresets)
+  const [checkedRules, setCheckedRules] = useState<Set<string>>(() => new Set())
+  const [newRule, setNewRule] = useState('')
+
+  const updatePresets = (next: LocalRulePreset[]) => {
+    setRulePresets(next)
+    saveRulePresets(next)
+  }
+
+  const toggleRule = (id: string) =>
+    setCheckedRules((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const addRule = () => {
+    const text = newRule.trim()
+    if (!text) return
+    const preset = { id: `c${Date.now()}`, text }
+    updatePresets([...rulePresets, preset])
+    setCheckedRules((prev) => new Set(prev).add(preset.id)) // 새로 적은 룰은 바로 체크
+    setNewRule('')
+  }
 
   const set = (patch: Partial<RuleConfig>) => setConfig((c) => ({ ...c, ...patch }))
   const setDouble = (patch: Partial<RuleConfig['doubleRule']>) =>
@@ -44,7 +70,16 @@ export function SetupScreen({
       ...p,
       name: p.name.trim() || `플레이어${i + 1}`,
     }))
-    onStart({ ...config, players }, { club: club.trim(), course: course.trim() })
+    onStart(
+      { ...config, players },
+      {
+        club: club.trim(),
+        course: course.trim(),
+        localRules: rulePresets
+          .filter((r) => checkedRules.has(r.id) && r.text.trim())
+          .map((r) => r.text.trim()),
+      },
+    )
   }
 
   return (
@@ -242,6 +277,57 @@ export function SetupScreen({
             <MoneyInput value={config.longest.amount} onChange={(v) => setLongest({ amount: v })} />
           </Row>
         )}
+      </Section>
+
+      <Section title="로컬룰 (확인용)">
+        {rulePresets.map((r) => (
+          <div className="rule-row" key={r.id}>
+            <input
+              type="checkbox"
+              checked={checkedRules.has(r.id)}
+              onChange={() => toggleRule(r.id)}
+              aria-label="이번 라운드에 적용"
+            />
+            <input
+              className="rule-text"
+              value={r.text}
+              onChange={(e) =>
+                updatePresets(rulePresets.map((x) => (x.id === r.id ? { ...x, text: e.target.value } : x)))
+              }
+            />
+            <button
+              type="button"
+              className="btn-ghost"
+              aria-label="룰 삭제"
+              onClick={() => {
+                updatePresets(rulePresets.filter((x) => x.id !== r.id))
+                setCheckedRules((prev) => {
+                  const next = new Set(prev)
+                  next.delete(r.id)
+                  return next
+                })
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <div className="rule-row">
+          <input
+            className="rule-text"
+            value={newRule}
+            placeholder="새 로컬룰 직접 입력"
+            onChange={(e) => setNewRule(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addRule()}
+          />
+          <button type="button" className="btn-secondary" onClick={addRule}>
+            추가
+          </button>
+        </div>
+        <p className="hint">
+          체크한 룰만 이번 라운드에 저장되고, 라운드 중 상단 ⓘ 버튼으로 언제든 볼 수 있습니다.
+          직접 추가·수정한 룰은 다음 라운드 체크리스트에도 남습니다. 정산에는 영향 없습니다.
+        </p>
       </Section>
 
       <Section title="기타">

@@ -70,6 +70,7 @@ export function LedgerScreen({
       memo: state.memo,
       club: state.club,
       course: state.course,
+      localRules: state.localRules,
     }
     if (editing) updateInHistory(entry)
     else addToHistory(entry)

@@ -13,6 +13,8 @@ export interface HistoryEntry {
   club?: string
   /** 시작 코스 */
   course?: string
+  /** 합의한 로컬룰 (확인용) */
+  localRules?: string[]
 }
 
 const HISTORY_KEY = 'ojang-history-v1'

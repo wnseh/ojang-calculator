@@ -18,6 +18,7 @@ export function PlayScreen({
 }) {
   const config = state.config!
   const [showOrder, setShowOrder] = useState(false)
+  const [showRules, setShowRules] = useState(false)
   const hole = state.holes.find((h) => h.holeNo === state.currentHole)
   if (!hole) return null
 
@@ -50,8 +51,39 @@ export function PlayScreen({
         >
           정산표
         </button>
+        {state.localRules.length > 0 && (
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label="로컬룰 보기"
+            onClick={() => setShowRules(true)}
+          >
+            ⓘ
+          </button>
+        )}
         <ThemeToggle />
       </header>
+
+      {showRules && (
+        <div className="modal-overlay" onClick={() => setShowRules(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setShowRules(false)}
+              aria-label="닫기"
+            >
+              ✕
+            </button>
+            <div className="modal-title">오늘의 로컬룰</div>
+            <ul className="rules-view">
+              {state.localRules.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       <nav className="hole-nav">
         {state.holes.map((h) => {

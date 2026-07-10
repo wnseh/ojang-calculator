@@ -123,6 +123,13 @@ function EntryCard({
             </div>
           )}
           {entry.memo.trim() && <p className="hint">메모: {entry.memo}</p>}
+          {(entry.localRules?.length ?? 0) > 0 && (
+            <ul className="rules-view small">
+              {entry.localRules!.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          )}
 
           <div className="history-actions">
             <button
@@ -241,6 +248,7 @@ export function HistoryScreen({
       historyId: entry.id,
       club: entry.club ?? '',
       course: entry.course ?? '',
+      localRules: entry.localRules ?? [],
     })
   }
 

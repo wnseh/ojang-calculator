@@ -33,6 +33,7 @@ export default function App() {
             startedAt: new Date().toISOString().slice(0, 10),
             club: meta.club,
             course: meta.course,
+            localRules: meta.localRules,
           })
         }
         onShowHistory={() => dispatch({ type: 'SET_SCREEN', screen: 'history' })}
