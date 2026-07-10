@@ -1,4 +1,4 @@
-import type { HoleResult, RuleConfig } from './engine/types'
+import type { HoleResult, LongestHoleRule, NearestHoleRule, RuleConfig } from './engine/types'
 import { emptyHoles } from './engine/defaults'
 
 export type Screen = 'setup' | 'play' | 'ledger' | 'history'
@@ -63,6 +63,9 @@ export type Action =
   | { type: 'SET_STROKE'; holeNo: number; playerId: string; strokes: number | null }
   | { type: 'SET_NEAREST'; holeNo: number; playerId: string | null }
   | { type: 'SET_LONGEST'; holeNo: number; playerId: string | null }
+  | { type: 'SET_NEAREST_RULE'; holeNo: number; rule: NearestHoleRule | null }
+  | { type: 'SET_LONGEST_RULE'; holeNo: number; rule: LongestHoleRule | null }
+  | { type: 'SET_CAP_OVERRIDE'; holeNo: number; cap: number }
   | { type: 'TOGGLE_SKIP'; holeNo: number }
   | { type: 'TOGGLE_MANUAL_DOUBLE'; holeNo: number }
   | { type: 'SET_MEMO'; memo: string }
@@ -126,7 +129,9 @@ export function reducer(state: AppState, action: Action): AppState {
             strokes,
             // 파가 바뀌면 니어/롱기 대상 홀 여부도 바뀌므로 초기화
             nearestWinner: action.par === 3 ? h.nearestWinner : null,
+            nearestRule: action.par === 3 ? h.nearestRule : undefined,
             longestWinner: action.par === 5 ? h.longestWinner : null,
+            longestRule: action.par === 5 ? h.longestRule : undefined,
           }
         }),
       }
@@ -150,6 +155,29 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         holes: updateHole(state.holes, action.holeNo, (h) => ({ ...h, longestWinner: action.playerId })),
+      }
+    case 'SET_NEAREST_RULE':
+      return {
+        ...state,
+        holes: updateHole(state.holes, action.holeNo, (h) => ({
+          ...h,
+          nearestRule: action.rule,
+          nearestWinner: action.rule ? h.nearestWinner : null,
+        })),
+      }
+    case 'SET_LONGEST_RULE':
+      return {
+        ...state,
+        holes: updateHole(state.holes, action.holeNo, (h) => ({
+          ...h,
+          longestRule: action.rule,
+          longestWinner: action.rule ? h.longestWinner : null,
+        })),
+      }
+    case 'SET_CAP_OVERRIDE':
+      return {
+        ...state,
+        holes: updateHole(state.holes, action.holeNo, (h) => ({ ...h, capOverride: action.cap })),
       }
     case 'TOGGLE_SKIP':
       return {

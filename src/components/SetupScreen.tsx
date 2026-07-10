@@ -44,10 +44,6 @@ export function SetupScreen({
   const set = (patch: Partial<RuleConfig>) => setConfig((c) => ({ ...c, ...patch }))
   const setDouble = (patch: Partial<RuleConfig['doubleRule']>) =>
     setConfig((c) => ({ ...c, doubleRule: { ...c.doubleRule, ...patch } }))
-  const setNearest = (patch: Partial<RuleConfig['nearest']>) =>
-    setConfig((c) => ({ ...c, nearest: { ...c.nearest, ...patch } }))
-  const setLongest = (patch: Partial<RuleConfig['longest']>) =>
-    setConfig((c) => ({ ...c, longest: { ...c.longest, ...patch } }))
 
   const setPlayerCount = (n: number) =>
     setConfig((c) => {
@@ -203,7 +199,7 @@ export function SetupScreen({
           label="수동 배판 콜 허용"
           hint="묻고 더블"
         />
-        <Row label="배판 상한">
+        <Row label="배판 상한 (시작)">
           <Segmented
             value={config.doubleRule.maxMultiplier}
             options={[
@@ -215,6 +211,10 @@ export function SetupScreen({
             onChange={(v) => setDouble({ maxMultiplier: v })}
           />
         </Row>
+        <p className="hint">
+          상한은 라운드 중 홀 입력 화면에서 올릴 수 있습니다 (변경한 홀부터 적용). 니어·롱기는
+          파3/파5 홀에서 그때그때 정합니다.
+        </p>
         <Toggle
           checked={config.doubleRule.stacking}
           onChange={(v) => setDouble({ stacking: v })}
@@ -232,51 +232,6 @@ export function SetupScreen({
           label="양파자 배판 면제"
           hint="배판 홀에서 양파 친 사람이 낀 쌍은 민판"
         />
-      </Section>
-
-      <Section title="니어리스트 (파3)">
-        <Toggle
-          checked={config.nearest.enabled}
-          onChange={(v) => setNearest({ enabled: v })}
-          label="니어 포함"
-        />
-        {config.nearest.enabled && (
-          <>
-            <Row label="보상 방식">
-              <Segmented
-                value={config.nearest.mode}
-                options={[
-                  { value: 'cash', label: '정액 지급' },
-                  { value: 'strokeMinus', label: '1타 차감' },
-                ]}
-                onChange={(v) => setNearest({ mode: v })}
-              />
-            </Row>
-            {config.nearest.mode === 'cash' && (
-              <Row label="니어 금액">
-                <MoneyInput value={config.nearest.amount} onChange={(v) => setNearest({ amount: v })} />
-              </Row>
-            )}
-            <Toggle
-              checked={config.nearest.requireParSave}
-              onChange={(v) => setNearest({ requireParSave: v })}
-              label="파 세이브 못하면 무효"
-            />
-          </>
-        )}
-      </Section>
-
-      <Section title="롱기스트 (파5)">
-        <Toggle
-          checked={config.longest.enabled}
-          onChange={(v) => setLongest({ enabled: v })}
-          label="롱기 포함"
-        />
-        {config.longest.enabled && (
-          <Row label="롱기 금액">
-            <MoneyInput value={config.longest.amount} onChange={(v) => setLongest({ amount: v })} />
-          </Row>
-        )}
       </Section>
 
       <Section title="로컬룰 (확인용)">

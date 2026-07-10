@@ -16,11 +16,21 @@ export function isHoleComplete(config: RuleConfig, hole: HoleResult): boolean {
   })
 }
 
-function multiplierFromTriggers(triggers: number, rule: DoubleRule): number {
+function multiplierFromTriggers(triggers: number, rule: DoubleRule, cap: number): number {
   if (triggers <= 0) return 1
   let m = rule.stacking ? 2 ** triggers : 2
-  if (rule.maxMultiplier > 0) m = Math.min(m, rule.maxMultiplier)
+  if (cap > 0) m = Math.min(m, cap)
   return m
+}
+
+/** 해당 홀에 적용되는 배판 상한 — 그 홀 이전(포함)의 마지막 변경값, 없으면 시작 상한 */
+export function effectiveCap(config: RuleConfig, holes: HoleResult[], holeNo: number): number {
+  let cap = config.doubleRule.maxMultiplier
+  for (const h of [...holes].sort((a, b) => a.holeNo - b.holeNo)) {
+    if (h.holeNo > holeNo) break
+    if (h.capOverride != null) cap = h.capOverride
+  }
+  return cap
 }
 
 function zeroNet(config: RuleConfig): Record<string, number> {
@@ -49,10 +59,12 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
   const holeSettlements: HoleSettlement[] = []
   const net = zeroNet(config)
   let carry = 0 // 다음 홀로 이월된 트리거 수
+  let cap = rule.maxMultiplier // 배판 상한 — 홀에서 변경하면 그 홀부터 적용
 
   const sorted = [...holes].sort((a, b) => a.holeNo - b.holeNo)
 
   for (const hole of sorted) {
+    if (hole.capOverride != null) cap = hole.capOverride
     const skipped = isSkipped(config, hole)
     const played = isHoleComplete(config, hole)
 
@@ -75,16 +87,30 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
     // 오장에서 양파 이상은 없다 — 항상 더블파로 컷
     const cut = (id: string) => Math.min(gross(id), dp)
 
+    // 니어/롱기 조건: 홀에서 정한 값 우선, 미정(undefined)이면 구버전 config 폴백
+    const nearestRule =
+      hole.nearestRule !== undefined
+        ? hole.nearestRule
+        : config.nearest?.enabled
+          ? config.nearest
+          : null
+    const longestRule =
+      hole.longestRule !== undefined
+        ? hole.longestRule
+        : config.longest?.enabled
+          ? config.longest
+          : null
+
     const nearestValid =
-      config.nearest.enabled &&
       par === 3 &&
+      !!nearestRule &&
       !!hole.nearestWinner &&
-      (!config.nearest.requireParSave || gross(hole.nearestWinner) <= par)
+      (!nearestRule.requireParSave || gross(hole.nearestWinner) <= par)
 
     // 정산용 타수: 양파 컷 + 니어 1타 차감 모드
     const eff = (id: string) =>
       cut(id) -
-      (nearestValid && config.nearest.mode === 'strokeMinus' && id === hole.nearestWinner ? 1 : 0)
+      (nearestValid && nearestRule?.mode === 'strokeMinus' && id === hole.nearestWinner ? 1 : 0)
 
     // 배수 결정: 이월 + 당홀(수동 콜 / (인원-1)명 동타)
     let triggers = carry + staticTriggers(config, hole)
@@ -94,7 +120,7 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
       // 4인이면 3명 동타, 3인이면 2명 동타 (전원 동타는 별도 규칙)
       if ([...counts.values()].includes(players.length - 1)) triggers++
     }
-    const mult = multiplierFromTriggers(triggers, rule)
+    const mult = multiplierFromTriggers(triggers, rule, cap)
 
     const transfers: Transfer[] = []
     const push = (from: string, to: string, amount: number, reason: TransferReason) => {
@@ -138,15 +164,15 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
     }
 
     // 3) 니어 정액 / 롱기
-    if (nearestValid && config.nearest.mode === 'cash' && hole.nearestWinner) {
+    if (nearestValid && nearestRule?.mode === 'cash' && hole.nearestWinner) {
       for (const q of players)
         if (q.id !== hole.nearestWinner)
-          push(q.id, hole.nearestWinner, config.nearest.amount * bonusMult, 'nearest')
+          push(q.id, hole.nearestWinner, nearestRule.amount * bonusMult, 'nearest')
     }
-    if (config.longest.enabled && par === 5 && hole.longestWinner) {
+    if (longestRule && par === 5 && hole.longestWinner) {
       for (const q of players)
         if (q.id !== hole.longestWinner)
-          push(q.id, hole.longestWinner, config.longest.amount * bonusMult, 'longest')
+          push(q.id, hole.longestWinner, longestRule.amount * bonusMult, 'longest')
     }
 
     const holeNet = zeroNet(config)
@@ -208,14 +234,15 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
     handicapTransfers,
     netByPlayer: net,
     minimalTransfers: minimizeTransfers(net),
-    nextMultiplier: multiplierFromTriggers(carry, rule),
+    nextMultiplier: multiplierFromTriggers(carry, rule, cap),
+    nextTriggers: carry,
     warnings,
   }
 }
 
 /**
  * 특정 홀에 적용될 배수 미리보기 (홀 입력 화면 뱃지용).
- * 스코어 미입력 홀은 이월 + 당홀 정적 조건(수동 콜/첫홀)만 반영 — 3명 동타는 입력 후 확정.
+ * 스코어 미입력 홀은 이월 + 당홀 정적 조건(수동 콜)만 반영 — 동타 배판은 입력 후 확정.
  */
 export function previewMultiplier(config: RuleConfig, holes: HoleResult[], holeNo: number): number {
   const target = holes.find((h) => h.holeNo === holeNo)
@@ -227,10 +254,12 @@ export function previewMultiplier(config: RuleConfig, holes: HoleResult[], holeN
   }
   const prior = holes.filter((h) => h.holeNo < holeNo)
   const s = settle(config, prior)
-  // nextMultiplier는 이월분만 반영하므로 트리거 수로 되돌린 뒤 당홀 정적 트리거를 더한다
-  const rule = config.doubleRule
-  const carryTriggers = s.nextMultiplier <= 1 ? 0 : Math.round(Math.log2(s.nextMultiplier))
-  return multiplierFromTriggers(carryTriggers + staticTriggers(config, target), rule)
+  const cap = effectiveCap(config, holes, holeNo)
+  return multiplierFromTriggers(
+    s.nextTriggers + staticTriggers(config, target),
+    config.doubleRule,
+    cap,
+  )
 }
 
 /** 누적 손익을 송금 횟수 최소로 상계 (그리디) */

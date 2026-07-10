@@ -1,9 +1,10 @@
-import { useState, type Dispatch } from 'react'
-import { isHoleComplete, previewMultiplier } from '../engine/settlement'
+import { useEffect, useState, type Dispatch } from 'react'
+import { BASE_LONGEST_RULE, BASE_NEAREST_RULE } from '../engine/defaults'
+import { effectiveCap, isHoleComplete, previewMultiplier } from '../engine/settlement'
 import type { Settlement } from '../engine/types'
 import { scoreClass, scoreLabel, signWon } from '../format'
 import type { Action, AppState } from '../store'
-import { Toggle } from './controls'
+import { MoneyInput, Row, Segmented, Toggle } from './controls'
 import { OrderSheet } from './OrderSheet'
 import { ThemeToggle } from './ThemeToggle'
 
@@ -20,6 +21,24 @@ export function PlayScreen({
   const [showOrder, setShowOrder] = useState(false)
   const [showRules, setShowRules] = useState(false)
   const hole = state.holes.find((h) => h.holeNo === state.currentHole)
+
+  // 파3/파5 홀에 처음 들어오면, 이전 홀에서 정한 니어/롱기 조건을 디폴트로 깔아준다
+  useEffect(() => {
+    if (!hole) return
+    if (hole.par === 3 && hole.nearestRule === undefined) {
+      const prior = [...state.holes].reverse().find((h) => h.holeNo !== hole.holeNo && h.nearestRule)
+      if (prior?.nearestRule) {
+        dispatch({ type: 'SET_NEAREST_RULE', holeNo: hole.holeNo, rule: { ...prior.nearestRule } })
+      }
+    }
+    if (hole.par === 5 && hole.longestRule === undefined) {
+      const prior = [...state.holes].reverse().find((h) => h.holeNo !== hole.holeNo && h.longestRule)
+      if (prior?.longestRule) {
+        dispatch({ type: 'SET_LONGEST_RULE', holeNo: hole.holeNo, rule: { ...prior.longestRule } })
+      }
+    }
+  }, [state.currentHole, hole, state.holes, dispatch])
+
   if (!hole) return null
 
   const complete = isHoleComplete(config, hole)
@@ -191,53 +210,172 @@ export function PlayScreen({
         />
       )}
 
-      {config.nearest.enabled && hole.par === 3 && (
+      {hole.par === 3 && (
         <section className="card">
-          <h2>니어리스트</h2>
+          <h2>니어리스트 — 이 홀</h2>
           <div className="chip-group">
             <button
               type="button"
-              className={`chip ${!hole.nearestWinner ? 'active' : ''}`}
-              onClick={() => dispatch({ type: 'SET_NEAREST', holeNo: hole.holeNo, playerId: null })}
+              className={`chip ${!hole.nearestRule ? 'active' : ''}`}
+              onClick={() => dispatch({ type: 'SET_NEAREST_RULE', holeNo: hole.holeNo, rule: null })}
             >
-              없음
+              니어 없음
             </button>
-            {config.players.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={`chip ${hole.nearestWinner === p.id ? 'active' : ''}`}
-                onClick={() => dispatch({ type: 'SET_NEAREST', holeNo: hole.holeNo, playerId: p.id })}
-              >
-                {p.name}
-              </button>
-            ))}
+            <button
+              type="button"
+              className={`chip ${hole.nearestRule ? 'active' : ''}`}
+              onClick={() =>
+                !hole.nearestRule &&
+                dispatch({
+                  type: 'SET_NEAREST_RULE',
+                  holeNo: hole.holeNo,
+                  rule: { ...BASE_NEAREST_RULE },
+                })
+              }
+            >
+              니어 있음
+            </button>
           </div>
+          {hole.nearestRule && (
+            <>
+              <Row label="보상 방식">
+                <Segmented
+                  value={hole.nearestRule.mode}
+                  options={[
+                    { value: 'cash', label: '정액 지급' },
+                    { value: 'strokeMinus', label: '1타 차감' },
+                  ]}
+                  onChange={(v) =>
+                    dispatch({
+                      type: 'SET_NEAREST_RULE',
+                      holeNo: hole.holeNo,
+                      rule: { ...hole.nearestRule!, mode: v },
+                    })
+                  }
+                />
+              </Row>
+              {hole.nearestRule.mode === 'cash' && (
+                <Row label="니어 금액">
+                  <MoneyInput
+                    value={hole.nearestRule.amount}
+                    onChange={(v) =>
+                      dispatch({
+                        type: 'SET_NEAREST_RULE',
+                        holeNo: hole.holeNo,
+                        rule: { ...hole.nearestRule!, amount: v },
+                      })
+                    }
+                  />
+                </Row>
+              )}
+              <Toggle
+                checked={hole.nearestRule.requireParSave}
+                onChange={(v) =>
+                  dispatch({
+                    type: 'SET_NEAREST_RULE',
+                    holeNo: hole.holeNo,
+                    rule: { ...hole.nearestRule!, requireParSave: v },
+                  })
+                }
+                label="파 세이브 못하면 무효"
+              />
+              <p className="hint">니어 받은 사람:</p>
+              <div className="chip-group">
+                <button
+                  type="button"
+                  className={`chip ${!hole.nearestWinner ? 'active' : ''}`}
+                  onClick={() =>
+                    dispatch({ type: 'SET_NEAREST', holeNo: hole.holeNo, playerId: null })
+                  }
+                >
+                  미정
+                </button>
+                {config.players.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`chip ${hole.nearestWinner === p.id ? 'active' : ''}`}
+                    onClick={() =>
+                      dispatch({ type: 'SET_NEAREST', holeNo: hole.holeNo, playerId: p.id })
+                    }
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="hint">여기서 정한 조건이 다음 파3에도 디폴트로 적용됩니다.</p>
         </section>
       )}
 
-      {config.longest.enabled && hole.par === 5 && (
+      {hole.par === 5 && (
         <section className="card">
-          <h2>롱기스트</h2>
+          <h2>롱기스트 — 이 홀</h2>
           <div className="chip-group">
             <button
               type="button"
-              className={`chip ${!hole.longestWinner ? 'active' : ''}`}
-              onClick={() => dispatch({ type: 'SET_LONGEST', holeNo: hole.holeNo, playerId: null })}
+              className={`chip ${!hole.longestRule ? 'active' : ''}`}
+              onClick={() => dispatch({ type: 'SET_LONGEST_RULE', holeNo: hole.holeNo, rule: null })}
             >
-              없음
+              롱기 없음
             </button>
-            {config.players.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={`chip ${hole.longestWinner === p.id ? 'active' : ''}`}
-                onClick={() => dispatch({ type: 'SET_LONGEST', holeNo: hole.holeNo, playerId: p.id })}
-              >
-                {p.name}
-              </button>
-            ))}
+            <button
+              type="button"
+              className={`chip ${hole.longestRule ? 'active' : ''}`}
+              onClick={() =>
+                !hole.longestRule &&
+                dispatch({
+                  type: 'SET_LONGEST_RULE',
+                  holeNo: hole.holeNo,
+                  rule: { ...BASE_LONGEST_RULE },
+                })
+              }
+            >
+              롱기 있음
+            </button>
           </div>
+          {hole.longestRule && (
+            <>
+              <Row label="롱기 금액">
+                <MoneyInput
+                  value={hole.longestRule.amount}
+                  onChange={(v) =>
+                    dispatch({
+                      type: 'SET_LONGEST_RULE',
+                      holeNo: hole.holeNo,
+                      rule: { amount: v },
+                    })
+                  }
+                />
+              </Row>
+              <p className="hint">롱기 받은 사람:</p>
+              <div className="chip-group">
+                <button
+                  type="button"
+                  className={`chip ${!hole.longestWinner ? 'active' : ''}`}
+                  onClick={() =>
+                    dispatch({ type: 'SET_LONGEST', holeNo: hole.holeNo, playerId: null })
+                  }
+                >
+                  미정
+                </button>
+                {config.players.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`chip ${hole.longestWinner === p.id ? 'active' : ''}`}
+                    onClick={() =>
+                      dispatch({ type: 'SET_LONGEST', holeNo: hole.holeNo, playerId: p.id })
+                    }
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="hint">여기서 정한 조건이 다음 파5에도 디폴트로 적용됩니다.</p>
         </section>
       )}
 
@@ -255,6 +393,21 @@ export function PlayScreen({
             label="묻고 더블 (수동 배판)"
           />
         )}
+        <Row label="배판 상한">
+          <Segmented
+            value={effectiveCap(config, state.holes, hole.holeNo)}
+            options={[
+              { value: 2, label: '×2' },
+              { value: 4, label: '×4' },
+              { value: 8, label: '×8' },
+              { value: 0, label: '무제한' },
+            ]}
+            onChange={(v) => dispatch({ type: 'SET_CAP_OVERRIDE', holeNo: hole.holeNo, cap: v })}
+          />
+        </Row>
+        <p className="hint">
+          상한을 바꾸면 <b>이 홀부터 라운드 끝까지</b> 적용됩니다 (예: 막판 배배배판 ×8).
+        </p>
       </section>
 
       {complete && holeStat && (

@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { defaultConfig, defaultPlayers } from './defaults'
 import { minimizeTransfers, previewMultiplier, settle } from './settlement'
-import type { HoleResult, RuleConfig } from './types'
+import type { HoleResult, NearestHoleRule, RuleConfig } from './types'
 
-type Patch = Partial<Omit<RuleConfig, 'doubleRule' | 'nearest' | 'longest'>> & {
+type Patch = Partial<Omit<RuleConfig, 'doubleRule'>> & {
   doubleRule?: Partial<RuleConfig['doubleRule']>
-  nearest?: Partial<RuleConfig['nearest']>
-  longest?: Partial<RuleConfig['longest']>
 }
 
 function cfg(patch: Patch = {}, playerCount = 4): RuleConfig {
@@ -15,10 +13,10 @@ function cfg(patch: Patch = {}, playerCount = 4): RuleConfig {
     ...base,
     ...patch,
     doubleRule: { ...base.doubleRule, ...patch.doubleRule },
-    nearest: { ...base.nearest, ...patch.nearest },
-    longest: { ...base.longest, ...patch.longest },
   }
 }
+
+const NEAR_CASH: NearestHoleRule = { mode: 'cash', amount: 5000, requireParSave: false }
 
 function hole(
   holeNo: number,
@@ -216,48 +214,108 @@ describe('보너스 (버디값/이글값)', () => {
   })
 })
 
-describe('니어리스트', () => {
+describe('니어리스트 (홀별 설정)', () => {
   it('정액 모드: 수령자가 나머지 각자에게서 받음', () => {
     const net = netOf(cfg({ doubleRule: { onMajorityTie: false, onAllTie: false } }), [
-      hole(1, 3, [3, 3, 3, 3], { nearestWinner: 'p1' }),
+      hole(1, 3, [3, 3, 3, 3], { nearestWinner: 'p1', nearestRule: NEAR_CASH }),
     ])
     expect(net).toEqual({ p1: 15000, p2: -5000, p3: -5000, p4: -5000 })
   })
 
   it('1타 차감 모드: 정산용 타수에서만 차감', () => {
-    const net = netOf(
-      cfg({ nearest: { mode: 'strokeMinus' }, doubleRule: { onMajorityTie: false, onAllTie: false } }),
-      [hole(1, 3, [3, 3, 3, 3], { nearestWinner: 'p1' })],
-    )
+    const net = netOf(cfg({ doubleRule: { onMajorityTie: false, onAllTie: false } }), [
+      hole(1, 3, [3, 3, 3, 3], {
+        nearestWinner: 'p1',
+        nearestRule: { ...NEAR_CASH, mode: 'strokeMinus' },
+      }),
+    ])
     // eff: p1=2, 나머지 3 → 각자 1타 × 5000
     expect(net).toEqual({ p1: 15000, p2: -5000, p3: -5000, p4: -5000 })
   })
 
   it('파 세이브 조건: 니어 수령자가 보기면 무효', () => {
-    const c = cfg({
-      nearest: { requireParSave: true },
-      doubleRule: { onMajorityTie: false, onAllTie: false },
-    })
-    const net = netOf(c, [hole(1, 3, [3, 4, 3, 3], { nearestWinner: 'p2' })])
+    const net = netOf(cfg({ doubleRule: { onMajorityTie: false, onAllTie: false } }), [
+      hole(1, 3, [3, 4, 3, 3], {
+        nearestWinner: 'p2',
+        nearestRule: { ...NEAR_CASH, requireParSave: true },
+      }),
+    ])
     // 니어 무효 → 타수차만: p2가 각자에게 5000씩
     expect(net).toEqual({ p1: 5000, p2: -15000, p3: 5000, p4: 5000 })
   })
 
+  it('니어 조건이 없는(미정/없음) 파3은 니어 지급 없음', () => {
+    const c = cfg({ doubleRule: { onAllTie: false, onMajorityTie: false } })
+    // 미정(undefined) + 새 라운드(config 폴백 없음)
+    expect(netOf(c, [hole(1, 3, [3, 3, 3, 3], { nearestWinner: 'p1' })]).p1).toBe(0)
+    // 명시적 없음(null)
+    expect(
+      netOf(c, [hole(1, 3, [3, 3, 3, 3], { nearestWinner: 'p1', nearestRule: null })]).p1,
+    ).toBe(0)
+  })
+
   it('파4에서는 니어 없음', () => {
     const net = netOf(cfg({ doubleRule: { onAllTie: false } }), [
-      hole(1, 4, [4, 4, 4, 4], { nearestWinner: 'p1' }),
+      hole(1, 4, [4, 4, 4, 4], { nearestWinner: 'p1', nearestRule: NEAR_CASH }),
     ])
     expect(net.p1).toBe(0)
   })
+
+  it('구버전 config 니어 설정 폴백 (저장된 라운드 호환)', () => {
+    const c = cfg({
+      nearest: { enabled: true, mode: 'cash', amount: 5000, requireParSave: false },
+      doubleRule: { onMajorityTie: false, onAllTie: false },
+    })
+    // 홀에 nearestRule이 없으면(구버전 기록) config 값으로 계산
+    const net = netOf(c, [hole(1, 3, [3, 3, 3, 3], { nearestWinner: 'p1' })])
+    expect(net.p1).toBe(15000)
+    // 홀에서 명시적으로 없음(null) 처리하면 config보다 우선
+    const off = netOf(c, [hole(1, 3, [3, 3, 3, 3], { nearestWinner: 'p1', nearestRule: null })])
+    expect(off.p1).toBe(0)
+  })
 })
 
-describe('롱기스트', () => {
-  it('켜면 파5에서 정액 지급', () => {
-    const net = netOf(
-      cfg({ longest: { enabled: true, amount: 3000 }, doubleRule: { onAllTie: false } }),
-      [hole(1, 5, [5, 5, 5, 5], { longestWinner: 'p3' })],
-    )
+describe('롱기스트 (홀별 설정)', () => {
+  it('파5에서 정한 금액으로 정액 지급', () => {
+    const net = netOf(cfg({ doubleRule: { onAllTie: false } }), [
+      hole(1, 5, [5, 5, 5, 5], { longestWinner: 'p3', longestRule: { amount: 3000 } }),
+    ])
     expect(net).toEqual({ p1: -3000, p2: -3000, p3: 9000, p4: -3000 })
+  })
+
+  it('조건 미정이면 지급 없음', () => {
+    const net = netOf(cfg({ doubleRule: { onAllTie: false } }), [
+      hole(1, 5, [5, 5, 5, 5], { longestWinner: 'p3' }),
+    ])
+    expect(net.p3).toBe(0)
+  })
+})
+
+describe('배판 상한 홀별 변경 (capOverride)', () => {
+  it('상한을 올린 홀부터 라운드 끝까지 적용', () => {
+    // 기본 상한 ×4. 트리거 3개(전홀 버디 2 + 당홀 묻고더블)면 원래 ×4에서 컷
+    const c = cfg({ doubleRule: { onMajorityTie: false } })
+    const holes = [
+      hole(1, 4, [3, 3, 4, 5]), // 버디 2개 → 다음홀 트리거 2
+      hole(2, 4, [3, 3, 4, 5], { capOverride: 8, manualDouble: true }), // 트리거 3 → ×8
+      hole(3, 4, [4, 5, 6, 7], { manualDouble: true }), // 전홀 버디 2 + 콜 = 트리거 3 → 상한 유지 ×8
+    ]
+    const s = settle(c, holes)
+    expect(s.holes[1].multiplier).toBe(8)
+    expect(s.holes[2].multiplier).toBe(8)
+    // 오버라이드 없었다면 ×4에서 컷
+    const noOverride = settle(c, [holes[0], { ...holes[1], capOverride: undefined }, holes[2]])
+    expect(noOverride.holes[1].multiplier).toBe(4)
+    expect(noOverride.holes[2].multiplier).toBe(4)
+  })
+
+  it('미리보기도 변경된 상한 반영', () => {
+    const c = cfg({ doubleRule: { onMajorityTie: false } })
+    const holes = [
+      hole(1, 4, [3, 3, 4, 5]), // 이월 트리거 2
+      hole(2, 4, [0, 0, 0, 0], { capOverride: 8, manualDouble: true }), // 미입력
+    ]
+    expect(previewMultiplier(c, holes, 2)).toBe(8)
   })
 })
 
@@ -324,16 +382,13 @@ describe('배수 미리보기 (previewMultiplier)', () => {
 
 describe('불변식·정산 요약', () => {
   it('복합 라운드에서 전체 손익 합은 항상 0', () => {
-    const c = cfg({
-      handicaps: { p4: 2 },
-      longest: { enabled: true, amount: 5000 },
-    })
+    const c = cfg({ handicaps: { p4: 2 } })
     const s = settle(c, [
       hole(1, 4, [4, 5, 3, 6]),
-      hole(2, 5, [5, 6, 7, 4], { longestWinner: 'p2' }),
-      hole(3, 3, [2, 3, 4, 6], { nearestWinner: 'p1' }),
+      hole(2, 5, [5, 6, 7, 4], { longestWinner: 'p2', longestRule: { amount: 5000 } }),
+      hole(3, 3, [2, 3, 4, 6], { nearestWinner: 'p1', nearestRule: NEAR_CASH }),
       hole(4, 4, [4, 4, 4, 4], { skipBetting: true }),
-      hole(5, 4, [8, 7, 3, 4], { manualDouble: true }),
+      hole(5, 4, [8, 7, 3, 4], { manualDouble: true, capOverride: 8 }),
     ])
     expectSumZero(s.netByPlayer)
     for (const h of s.holes) expectSumZero(h.netByPlayer)

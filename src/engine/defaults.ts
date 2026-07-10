@@ -23,11 +23,16 @@ export function defaultConfig(players: Player[] = defaultPlayers()): RuleConfig 
       bonusAffected: true,
       doubleParExempt: false,
     },
-    nearest: { enabled: true, mode: 'cash', amount: 5000, requireParSave: false },
-    longest: { enabled: false, amount: 5000 },
+    // 니어/롱기는 라운드 전이 아니라 파3/파5 홀에서 그때그때 정한다 (HoleResult.nearestRule/longestRule)
     houseLimit: null,
   }
 }
+
+/** 파3에서 니어를 "있음"으로 켤 때의 기본 조건 */
+export const BASE_NEAREST_RULE = { mode: 'cash' as const, amount: 5000, requireParSave: false }
+
+/** 파5에서 롱기를 "있음"으로 켤 때의 기본 조건 */
+export const BASE_LONGEST_RULE = { amount: 5000 }
 
 /** 일반적인 파 배치(파4 10개, 파3 4개, 파5 4개)로 18홀 생성 */
 export function emptyHoles(count = 18): HoleResult[] {
