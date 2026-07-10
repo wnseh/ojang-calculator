@@ -4,6 +4,7 @@ import { buildShareText } from '../engine/share'
 import { signWon } from '../format'
 import { aggregateTotals, listHistory, removeFromHistory, type HistoryEntry } from '../history'
 import type { Action } from '../store'
+import { ThemeToggle } from './ThemeToggle'
 
 function EntryCard({
   entry,
@@ -128,6 +129,7 @@ export function HistoryScreen({
         >
           {hasActiveRound ? '← 라운드로' : '← 새 라운드'}
         </button>
+        <ThemeToggle />
       </header>
 
       {entries.length === 0 ? (

@@ -1,9 +1,11 @@
-import type { Dispatch } from 'react'
+import { useState, type Dispatch } from 'react'
 import { isHoleComplete, previewMultiplier } from '../engine/settlement'
 import type { Settlement } from '../engine/types'
 import { scoreClass, scoreLabel, signWon } from '../format'
 import type { Action, AppState } from '../store'
 import { Toggle } from './controls'
+import { OrderSheet } from './OrderSheet'
+import { ThemeToggle } from './ThemeToggle'
 
 export function PlayScreen({
   state,
@@ -15,6 +17,7 @@ export function PlayScreen({
   settlement: Settlement
 }) {
   const config = state.config!
+  const [showOrder, setShowOrder] = useState(false)
   const hole = state.holes.find((h) => h.holeNo === state.currentHole)
   if (!hole) return null
 
@@ -47,6 +50,7 @@ export function PlayScreen({
         >
           정산표
         </button>
+        <ThemeToggle />
       </header>
 
       <nav className="hole-nav">
@@ -133,14 +137,27 @@ export function PlayScreen({
           )
         })}
 
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => config.players.forEach((p) => setStroke(p.id, hole.par))}
-        >
-          전원 파
-        </button>
+        <div className="card-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => config.players.forEach((p) => setStroke(p.id, hole.par))}
+          >
+            전원 파
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setShowOrder(true)}>
+            순서 변경
+          </button>
+        </div>
       </section>
+
+      {showOrder && (
+        <OrderSheet
+          players={config.players}
+          onApply={(order) => dispatch({ type: 'REORDER_PLAYERS', order })}
+          onClose={() => setShowOrder(false)}
+        />
+      )}
 
       {config.nearest.enabled && hole.par === 3 && (
         <section className="card">

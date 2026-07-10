@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { defaultConfig, defaultPlayers } from '../engine/defaults'
 import type { RuleConfig } from '../engine/types'
 import { MoneyInput, Row, Section, Segmented, Toggle } from './controls'
+import { ThemeToggle } from './ThemeToggle'
 
 export function SetupScreen({
   onStart,
@@ -51,6 +52,7 @@ export function SetupScreen({
         <button type="button" className="btn-secondary header-btn" onClick={onShowHistory}>
           지난 라운드
         </button>
+        <ThemeToggle />
         <span className="subtitle">라운드 시작 전 룰을 확인하세요</span>
       </header>
 

@@ -13,6 +13,8 @@ export interface AppState {
   startedAt: string | null
   /** 히스토리에서 다시 연 라운드면 해당 항목 id — 종료 시 새로 추가하지 않고 갱신 */
   editingHistoryId: string | null
+  /** 라운드 시작 직후 티샷 순서 뽑기 팝업 표시 여부 */
+  showTeeOrder: boolean
 }
 
 export const initialState: AppState = {
@@ -23,6 +25,7 @@ export const initialState: AppState = {
   memo: '',
   startedAt: null,
   editingHistoryId: null,
+  showTeeOrder: false,
 }
 
 export type Action =
@@ -44,6 +47,8 @@ export type Action =
   | { type: 'TOGGLE_SKIP'; holeNo: number }
   | { type: 'TOGGLE_MANUAL_DOUBLE'; holeNo: number }
   | { type: 'SET_MEMO'; memo: string }
+  | { type: 'REORDER_PLAYERS'; order: string[] }
+  | { type: 'DISMISS_TEE_ORDER' }
   | { type: 'NEW_ROUND' }
   | { type: 'FINISH_ROUND' }
 
@@ -66,6 +71,7 @@ export function reducer(state: AppState, action: Action): AppState {
         memo: '',
         startedAt: action.startedAt,
         editingHistoryId: null,
+        showTeeOrder: true,
       }
     case 'RESUME_ROUND':
       return {
@@ -76,6 +82,7 @@ export function reducer(state: AppState, action: Action): AppState {
         memo: action.memo,
         startedAt: action.startedAt,
         editingHistoryId: action.historyId,
+        showTeeOrder: false,
       }
     case 'SET_SCREEN':
       return { ...state, screen: action.screen }
@@ -131,6 +138,16 @@ export function reducer(state: AppState, action: Action): AppState {
       }
     case 'SET_MEMO':
       return { ...state, memo: action.memo }
+    case 'REORDER_PLAYERS': {
+      if (!state.config) return state
+      const byId = new Map(state.config.players.map((p) => [p.id, p]))
+      const players = action.order.flatMap((id) => byId.get(id) ?? [])
+      // 순서 배열이 현재 플레이어와 정확히 일치할 때만 적용
+      if (players.length !== state.config.players.length) return state
+      return { ...state, config: { ...state.config, players } }
+    }
+    case 'DISMISS_TEE_ORDER':
+      return { ...state, showTeeOrder: false }
     case 'NEW_ROUND':
       return initialState
     case 'FINISH_ROUND':

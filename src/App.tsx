@@ -3,6 +3,7 @@ import { HistoryScreen } from './components/HistoryScreen'
 import { LedgerScreen } from './components/LedgerScreen'
 import { PlayScreen } from './components/PlayScreen'
 import { SetupScreen } from './components/SetupScreen'
+import { TeeOrderModal } from './components/TeeOrderModal'
 import { settle } from './engine/settlement'
 import { loadState, reducer, saveState } from './store'
 
@@ -41,5 +42,19 @@ export default function App() {
     return <LedgerScreen state={state} dispatch={dispatch} settlement={settlement} />
   }
 
-  return <PlayScreen state={state} dispatch={dispatch} settlement={settlement} />
+  return (
+    <>
+      <PlayScreen state={state} dispatch={dispatch} settlement={settlement} />
+      {state.showTeeOrder && (
+        <TeeOrderModal
+          players={state.config.players}
+          onApply={(order) => {
+            dispatch({ type: 'REORDER_PLAYERS', order })
+            dispatch({ type: 'DISMISS_TEE_ORDER' })
+          }}
+          onClose={() => dispatch({ type: 'DISMISS_TEE_ORDER' })}
+        />
+      )}
+    </>
+  )
 }

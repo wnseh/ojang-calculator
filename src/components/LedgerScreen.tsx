@@ -5,6 +5,7 @@ import type { Settlement } from '../engine/types'
 import { scoreClass, signWon } from '../format'
 import { addToHistory, updateInHistory } from '../history'
 import type { Action, AppState } from '../store'
+import { ThemeToggle } from './ThemeToggle'
 
 export function LedgerScreen({
   state,
@@ -81,6 +82,7 @@ export function LedgerScreen({
         >
           ← 홀 입력
         </button>
+        <ThemeToggle />
       </header>
 
       {settlement.warnings.map((w) => (
