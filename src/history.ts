@@ -62,6 +62,63 @@ export function listHistory(): HistoryEntry[] {
   return [...loadHistory()].reverse()
 }
 
+/* ---------- 백업 (내보내기/가져오기) ---------- */
+
+export interface ExportPayload {
+  app: 'ojang-calculator'
+  version: 1
+  exportedAt: string
+  entries: HistoryEntry[]
+}
+
+export function buildExportPayload(exportedAt: string): ExportPayload {
+  return { app: 'ojang-calculator', version: 1, exportedAt, entries: loadHistory() }
+}
+
+function isValidEntry(e: unknown): e is HistoryEntry {
+  if (!e || typeof e !== 'object') return false
+  const x = e as Record<string, unknown>
+  return (
+    typeof x.id === 'string' &&
+    typeof x.date === 'string' &&
+    !!x.config &&
+    typeof x.config === 'object' &&
+    Array.isArray((x.config as Record<string, unknown>).players) &&
+    Array.isArray(x.holes)
+  )
+}
+
+/** 순수 병합 로직: 같은 id는 기존 기록 우선(중복 제외), 새 항목은 날짜순으로 끼워 넣음 */
+export function mergeHistory(
+  existing: HistoryEntry[],
+  incoming: unknown,
+): { merged: HistoryEntry[]; imported: number; skipped: number } {
+  const payload = incoming as Partial<ExportPayload> | null
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.entries)) {
+    throw new Error('invalid payload')
+  }
+  const valid = payload.entries.filter(isValidEntry)
+  if (valid.length === 0 && payload.entries.length > 0) throw new Error('invalid payload')
+
+  const existingIds = new Set(existing.map((e) => e.id))
+  const fresh = valid.filter((e) => !existingIds.has(e.id))
+  const merged = [...existing, ...fresh].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
+  )
+  return { merged, imported: fresh.length, skipped: valid.length - fresh.length }
+}
+
+/** 파일에서 읽은 payload를 저장소에 병합. 반환 목록은 최신순 */
+export function importHistory(incoming: unknown): {
+  entries: HistoryEntry[]
+  imported: number
+  skipped: number
+} {
+  const { merged, imported, skipped } = mergeHistory(loadHistory(), incoming)
+  saveHistory(merged)
+  return { entries: [...merged].reverse(), imported, skipped }
+}
+
 export interface PlayerTotal {
   name: string
   total: number

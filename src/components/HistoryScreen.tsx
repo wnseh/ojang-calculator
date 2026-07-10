@@ -1,8 +1,15 @@
-import { useMemo, useState, type Dispatch } from 'react'
+import { useMemo, useRef, useState, type Dispatch } from 'react'
 import { isHoleComplete, settle } from '../engine/settlement'
 import { buildShareText } from '../engine/share'
 import { scoreClass, signWon } from '../format'
-import { aggregateTotals, listHistory, removeFromHistory, type HistoryEntry } from '../history'
+import {
+  aggregateTotals,
+  buildExportPayload,
+  importHistory,
+  listHistory,
+  removeFromHistory,
+  type HistoryEntry,
+} from '../history'
 import type { Action } from '../store'
 import { ThemeToggle } from './ThemeToggle'
 
@@ -185,7 +192,39 @@ export function HistoryScreen({
 }) {
   const [entries, setEntries] = useState<HistoryEntry[]>(listHistory)
   const [totalsOpen, setTotalsOpen] = useState(false)
+  const [backupMsg, setBackupMsg] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
   const totals = useMemo(() => aggregateTotals(entries), [entries])
+
+  const doExport = () => {
+    const today = new Date().toISOString().slice(0, 10)
+    const payload = buildExportPayload(new Date().toISOString())
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ojang-backup-${today}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setBackupMsg(`${payload.entries.length}개 라운드를 파일로 내보냈습니다.`)
+  }
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const json = JSON.parse(await file.text())
+      const result = importHistory(json)
+      setEntries(result.entries)
+      setBackupMsg(
+        `${result.imported}개 라운드를 가져왔습니다.` +
+          (result.skipped > 0 ? ` (이미 있는 ${result.skipped}개는 제외)` : ''),
+      )
+    } catch {
+      setBackupMsg('가져오기 실패 — 올바른 오장 백업 파일이 아닙니다.')
+    }
+  }
 
   const editEntry = (entry: HistoryEntry) => {
     if (
@@ -273,6 +312,36 @@ export function HistoryScreen({
           ))}
         </>
       )}
+
+      <section className="card">
+        <h2>백업 / 기기 이전</h2>
+        <div className="history-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={entries.length === 0}
+            onClick={doExport}
+          >
+            📤 내보내기 (JSON)
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => fileRef.current?.click()}>
+            📥 가져오기
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={onImportFile}
+          />
+        </div>
+        {backupMsg && <p className="hint">{backupMsg}</p>}
+        <p className="hint">
+          내보낸 파일을 카톡 "나에게 보내기" 등으로 보관해두면 폰을 바꾸거나 주소가 바뀌어도
+          가져오기로 복원할 수 있습니다. 가져오기는 기존 기록에 합쳐지며 같은 라운드는 중복
+          저장되지 않습니다.
+        </p>
+      </section>
     </div>
   )
 }
