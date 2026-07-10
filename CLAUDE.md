@@ -62,3 +62,65 @@ LLM 코딩에서 흔히 발생하는 오류를 줄이기 위한 행동 지침입
 
 명확한 성공 기준은 독립적인 반복 작업을 가능하게 합니다.
 모호한 기준("작동하게 만들기")은 지속적인 명확화를 요구합니다.
+
+---
+
+# 프로젝트: 오장 내기 정산 계산기
+
+골프 오장 내기 정산 모바일 웹앱(PWA). 요구사항·룰 명세는 [PRD.md](./PRD.md)가 단일 소스이며, 룰이 바뀌면 PRD도 함께 갱신한다.
+
+- 배포: https://wnseh.github.io/ojang-calculator/ (GitHub Pages — `main` 푸시 시 Actions가 테스트→빌드→자동 배포)
+- 저장소: https://github.com/wnseh/ojang-calculator (public)
+
+## 명령어
+
+```bash
+npm run dev        # 개발 서버
+npm test           # vitest (엔진 + 리듀서 통합 테스트)
+npm run build      # tsc --noEmit + vite build (+ PWA 생성)
+```
+
+## 아키텍처
+
+```
+src/engine/     정산 엔진 — UI와 분리된 순수 함수. settle(config, holes) → Settlement
+  types.ts      RuleConfig / HoleResult / Settlement. deprecated 필드는 구버전 기록 호환용
+  settlement.ts 핵심 로직 (배판 상태머신, 쌍별 정산, previewMultiplier, effectiveCap)
+  defaults.ts   기본 설정값, BASE_NEAREST_RULE 등
+  share.ts      카톡 공유 텍스트
+src/store.ts    useReducer 상태 + localStorage 저장/복구. 상태는 {config, holes[]}가 원본
+src/history.ts  종료 라운드 보관, 백업 내보내기/가져오기(mergeHistory), 누적 전적
+src/localrules.ts 로컬룰 프리셋 (localStorage 영구 저장)
+src/components/ 화면 4개: Setup / Play / Ledger / History + 모달들
+```
+
+## 반드시 지킬 설계 원칙
+
+- **정산은 항상 파생 계산**: 원본은 `{config, holes[]}`뿐이고 `settle()`이 매번 전체를 재계산한다. 증분 갱신·정산 결과 저장 금지 (과거 홀 수정/히스토리 재계산이 이 원칙에 의존).
+- **엔진 수정 시 단위 테스트 필수**: 수기 계산과 대조하는 테스트를 함께 추가. 전체 손익 합 0 불변식 유지.
+- **구버전 기록 호환**: localStorage에 저장된 옛 라운드가 깨지면 안 된다. 필드 제거 대신 optional/deprecated 처리 + 엔진 폴백 (예: `config.nearest` → `hole.nearestRule`).
+- `base: './'` (vite.config.ts) — GitHub Pages 서브경로 배포용. 절대경로 asset 참조 금지.
+
+## 도메인 룰 요약 (헷갈리기 쉬운 것)
+
+- 정산: 매홀 모든 쌍의 (정산용 타수차) × 타당 × 그 홀 배수. 버디값/니어값은 별도 지급.
+- 양파(더블파) 이상은 존재하지 않음 — 입력 자체를 par×2로 클램프.
+- 동타 당홀 배판은 **(인원−1)명 동타**: 4인=3명, 3인=2명. 전원 동타는 다음홀 배판.
+- 배판 트리거는 이월(버디/양파·양파직전/전원 동타) + 당홀(동타/묻고 더블). 중첩 시 곱연산, 상한 컷.
+- **스킵 홀**(내기 제외): 정산 없음 + 배판 이월 소멸. 미입력 홀은 이월 유지.
+- 배판 상한은 `hole.capOverride`로 라운드 중 변경 — **그 홀부터 끝까지** 적용 (`effectiveCap`).
+- 니어/롱기는 홀별 설정(`hole.nearestRule/longestRule`): undefined=미정(구 config 폴백), null=명시적 없음. PlayScreen useEffect가 이전 홀 조건을 다음 파3/파5에 자동 복사.
+- 핸디는 플레이어별 "받는 타수" → 쌍별 차이 자동, 라운드 시작부터 누적 손익에 포함.
+
+## localStorage 키
+
+- `ojang-round-v1` 진행 중 라운드(AppState 전체) / `ojang-history-v1` 종료 라운드 목록
+- `ojang-localrules-v1` 로컬룰 프리셋 / `ojang-theme` 다크모드
+
+키 스키마를 바꿀 때는 마이그레이션 또는 폴백을 넣을 것 (사용자 실데이터가 있다).
+
+## UI 컨벤션
+
+- 한국어, 모바일 우선(44px+ 터치 타깃), 카트에서 장갑 끼고 쓰는 상황 가정
+- 다크모드는 CSS 변수(`:root[data-theme='dark']`) — 색상 하드코딩 금지, 변수 사용
+- 히스토리는 **스코어 중심** 표시 — 돈은 "오장 결과" 버튼을 눌러야 보임 (사용자 요청 사항)
