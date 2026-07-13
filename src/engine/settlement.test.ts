@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defaultConfig, defaultPlayers } from './defaults'
-import { minimizeTransfers, previewMultiplier, settle } from './settlement'
+import { minimizeTransfers, settle } from './settlement'
 import type { HoleResult, NearestHoleRule, RuleConfig } from './types'
 
 type Patch = Partial<Omit<RuleConfig, 'doubleRule'>> & {
@@ -58,131 +58,110 @@ describe('기본 쌍별 타수차 정산', () => {
   })
 })
 
-describe('배판 트리거', () => {
-  // 주의: [4,5,4,4]류 스코어는 3명 동타 트리거가 겹치므로 onMajorityTie를 끄고 검증
+describe('홀 배수 직접 선택', () => {
+  it('배수를 정하지 않으면 항상 민판(×1) — 버디/동타여도 자동 배판 없음', () => {
+    const s = settle(cfg(), [hole(1, 4, [3, 4, 4, 4]), hole(2, 4, [4, 5, 4, 4])])
+    expect(s.holes[0].multiplier).toBe(1)
+    expect(s.holes[1].multiplier).toBe(1)
+  })
+
+  it('홀에서 선택한 배수로 그 홀만 계산', () => {
+    const s = settle(cfg(), [
+      hole(1, 4, [4, 5, 3, 6]),
+      hole(2, 4, [4, 5, 6, 7], { multiplier: 2 }),
+      hole(3, 4, [4, 5, 6, 7], { multiplier: 8 }),
+      hole(4, 4, [4, 5, 6, 7]),
+    ])
+    expect(s.holes.map((h) => h.multiplier)).toEqual([1, 2, 8, 1])
+    // 2번홀 p1: (1+2+3)타 × 5000 × 2 = +60000 / 3번홀은 ×8 = +240000
+    expect(s.holes[1].netByPlayer.p1).toBe(60000)
+    expect(s.holes[2].netByPlayer.p1).toBe(240000)
+  })
+})
+
+describe('구버전 자동 배판 기록 호환 (레거시)', () => {
+  const legacy = (patch: Partial<RuleConfig['doubleRule']> = {}) =>
+    cfg({
+      doubleRule: {
+        bonusAffected: true,
+        doubleParExempt: false,
+        onBirdie: true,
+        onBigNumber: true,
+        onMajorityTie: true,
+        onAllTie: true,
+        allowManualCall: true,
+        maxMultiplier: 4,
+        stacking: true,
+        ...patch,
+      },
+    })
+
   it('버디 → 다음홀 ×2', () => {
-    const s = settle(cfg({ doubleRule: { onMajorityTie: false } }), [
+    const s = settle(legacy({ onMajorityTie: false }), [
       hole(1, 4, [4, 5, 3, 6]),
       hole(2, 4, [4, 5, 4, 4]),
     ])
-    expect(s.holes[0].multiplier).toBe(1)
     expect(s.holes[1].multiplier).toBe(2)
-    // 2번홀: p2만 보기 → 각자에게 1타 × 5000 × 2 = 10000씩 지급
     expect(s.holes[1].netByPlayer).toEqual({ p1: 10000, p2: -30000, p3: 10000, p4: 10000 })
   })
 
-  it('버디 2개 + 중첩 곱연산 → ×4 (상한 ×4)', () => {
-    const s = settle(cfg({ doubleRule: { onMajorityTie: false } }), [
-      hole(1, 4, [3, 3, 4, 5]),
-      hole(2, 4, [4, 5, 4, 4]),
-    ])
-    expect(s.holes[1].multiplier).toBe(4)
-  })
-
-  it('상한 ×2면 트리거 2개여도 ×2', () => {
-    const s = settle(cfg({ doubleRule: { maxMultiplier: 2, onMajorityTie: false } }), [
-      hole(1, 4, [3, 3, 4, 5]),
-      hole(2, 4, [4, 5, 4, 4]),
-    ])
-    expect(s.holes[1].multiplier).toBe(2)
-  })
-
-  it('중첩 곱연산 끔이면 트리거 개수 무관 ×2', () => {
-    const s = settle(cfg({ doubleRule: { stacking: false, maxMultiplier: 0, onMajorityTie: false } }), [
-      hole(1, 4, [3, 3, 4, 5]),
-      hole(2, 4, [4, 5, 4, 4]),
-    ])
-    expect(s.holes[1].multiplier).toBe(2)
-  })
-
-  it('양파직전(파4 트리플) → 다음홀 ×2', () => {
-    const s = settle(cfg({ doubleRule: { onMajorityTie: false } }), [
-      hole(1, 4, [4, 4, 5, 7]),
-      hole(2, 4, [4, 4, 4, 5]),
-    ])
-    expect(s.holes[1].multiplier).toBe(2)
-  })
-
-  it('3명 동타 → 당홀 소급 ×2', () => {
-    const s = settle(cfg(), [hole(1, 4, [4, 4, 4, 5])])
+  it('3명 동타 → 당홀 ×2, 상한 컷', () => {
+    const s = settle(legacy(), [hole(1, 4, [4, 4, 4, 5])])
     expect(s.holes[0].multiplier).toBe(2)
-    // p4가 각자에게 1타 × 5000 × 2 = 10000씩
-    expect(s.holes[0].netByPlayer).toEqual({ p1: 10000, p2: 10000, p3: 10000, p4: -30000 })
-    // 당홀 조건이므로 다음홀로는 이월 안 됨
-    expect(s.nextMultiplier).toBe(1)
-  })
-
-  it('전원 동타 → 다음홀 ×2 (당홀은 민판)', () => {
-    const s = settle(cfg(), [hole(1, 4, [5, 5, 5, 5])])
-    expect(s.holes[0].multiplier).toBe(1)
-    expect(s.nextMultiplier).toBe(2)
-  })
-
-  it('3인 플레이: 2명 동타 → 당홀 소급 ×2', () => {
-    const s = settle(cfg({}, 3), [hole(1, 4, [4, 4, 5])])
-    expect(s.holes[0].multiplier).toBe(2)
-    // p3가 각자에게 1타 × 5000 × 2 = 10000씩
-    expect(s.holes[0].netByPlayer).toEqual({ p1: 10000, p2: 10000, p3: -20000 })
-  })
-
-  it('4인 플레이: 2명 동타는 당홀 배판 아님', () => {
-    const s = settle(cfg(), [hole(1, 4, [4, 4, 5, 6])])
-    expect(s.holes[0].multiplier).toBe(1)
-  })
-
-  it('수동 배판 콜(묻고 더블)', () => {
-    const on = settle(cfg({ doubleRule: { onMajorityTie: false } }), [
-      hole(1, 4, [4, 5, 4, 4], { manualDouble: true }),
+    const capped = settle(legacy({ maxMultiplier: 2 }), [
+      hole(1, 4, [3, 3, 4, 5]),
+      hole(2, 4, [4, 5, 6, 7]),
     ])
-    expect(on.holes[0].multiplier).toBe(2)
-    const off = settle(cfg({ doubleRule: { allowManualCall: false, onMajorityTie: false } }), [
-      hole(1, 4, [4, 5, 4, 4], { manualDouble: true }),
-    ])
-    expect(off.holes[0].multiplier).toBe(1)
+    expect(capped.holes[1].multiplier).toBe(2)
   })
 
-  it('배판 조건 끄면 트리거 없음', () => {
-    const s = settle(
-      cfg({ doubleRule: { onBirdie: false, onBigNumber: false, onMajorityTie: false, onAllTie: false } }),
-      [hole(1, 4, [3, 8, 4, 4]), hole(2, 4, [4, 5, 4, 4])],
-    )
+  it('스킵 홀에서 배판 리셋, 미입력 홀은 이월 유지', () => {
+    const s = settle(legacy({ onMajorityTie: false }), [
+      hole(1, 4, [3, 4, 5, 6]),
+      hole(2, 4, [3, 4, 4, 4], { skipBetting: true }),
+      hole(3, 4, [4, 5, 6, 7]),
+    ])
+    expect(s.holes[2].multiplier).toBe(1)
+    const gap = settle(legacy({ onMajorityTie: false }), [
+      hole(1, 4, [3, 4, 5, 6]),
+      hole(2, 4, [0, 0, 0, 0]),
+      hole(3, 4, [4, 5, 4, 4]),
+    ])
+    expect(gap.holes[2].multiplier).toBe(2)
+  })
+
+  it('묻고 더블 + capOverride(그 홀부터 적용)', () => {
+    const s = settle(legacy({ onMajorityTie: false }), [
+      hole(1, 4, [3, 3, 4, 5]), // 이월 트리거 2
+      hole(2, 4, [3, 3, 4, 5], { capOverride: 8, manualDouble: true }), // 트리거 3 → ×8
+      hole(3, 4, [4, 5, 6, 7], { manualDouble: true }), // 트리거 3, 상한 유지 → ×8
+    ])
+    expect(s.holes[1].multiplier).toBe(8)
+    expect(s.holes[2].multiplier).toBe(8)
+  })
+
+  it('레거시 기록도 홀에 배수가 직접 있으면 그 값 우선', () => {
+    const s = settle(legacy(), [hole(1, 4, [4, 4, 4, 5], { multiplier: 1 })])
     expect(s.holes[0].multiplier).toBe(1)
-    expect(s.holes[1].multiplier).toBe(1)
   })
 })
 
-describe('내기 스킵 홀', () => {
-  it('스킵 홀은 정산 없음 + 배판 리셋 + 트리거 미발생', () => {
+describe('내기 스킵 홀 / 미입력 홀', () => {
+  it('스킵 홀은 배수를 정했어도 정산 없음', () => {
     const s = settle(cfg(), [
-      hole(1, 4, [3, 4, 5, 6]), // p1 버디 → 다음홀 배판 예정
-      hole(2, 4, [3, 4, 4, 4], { skipBetting: true }), // 스킵: 정산 없음, 버디도 무효
-      hole(3, 4, [4, 5, 6, 7]),
-    ])
-    expect(s.holes[1].skipped).toBe(true)
-    expect(s.holes[1].netByPlayer).toEqual({ p1: 0, p2: 0, p3: 0, p4: 0 })
-    expect(s.holes[2].multiplier).toBe(1) // 배판이 스킵 홀에서 소멸
-  })
-
-  it('첫홀도 스킵 토글로 몸풀기 처리 가능', () => {
-    const s = settle(cfg(), [
-      hole(1, 4, [3, 4, 5, 6], { skipBetting: true }),
+      hole(1, 4, [3, 4, 5, 6], { skipBetting: true, multiplier: 4 }),
       hole(2, 4, [4, 5, 6, 7]),
     ])
     expect(s.holes[0].skipped).toBe(true)
-    expect(s.holes[0].netByPlayer.p1).toBe(0)
+    expect(s.holes[0].netByPlayer).toEqual({ p1: 0, p2: 0, p3: 0, p4: 0 })
     expect(s.holes[1].multiplier).toBe(1)
   })
-})
 
-describe('미입력 홀', () => {
-  it('미입력 홀은 배판 이월을 끊지 않음', () => {
-    const s = settle(cfg({ doubleRule: { onMajorityTie: false } }), [
-      hole(1, 4, [3, 4, 5, 6]), // 버디 → 다음 친 홀 배판
-      hole(2, 4, [0, 0, 0, 0]), // 미입력
-      hole(3, 4, [4, 5, 4, 4]),
-    ])
-    expect(s.holes[1].played).toBe(false)
-    expect(s.holes[2].multiplier).toBe(2)
+  it('미입력 홀은 정산 없음(played=false)', () => {
+    const s = settle(cfg(), [hole(1, 4, [0, 0, 0, 0]), hole(2, 4, [4, 5, 6, 7])])
+    expect(s.holes[0].played).toBe(false)
+    expect(s.holes[0].netByPlayer.p1).toBe(0)
+    expect(s.holes[1].played).toBe(true)
   })
 })
 
@@ -194,22 +173,20 @@ describe('보너스 (버디값/이글값)', () => {
     expect(birdie.every((t) => t.to === 'p1' && t.amount === 5000)).toBe(true)
   })
 
-  it('이글값 지급 + 파3 홀인원은 이글 등급', () => {
-    const net = netOf(cfg(), [hole(1, 3, [1, 3, 3, 3])])
-    // 3명 동타(3,3,3) → 당홀 ×2. 타수차: 각자 2타 × 5000 × 2 = 20000
-    // 이글값 10000 × 배수2(bonusAffected) = 20000씩
+  it('이글값 지급 + 파3 홀인원은 이글 등급 (배판 홀이면 보너스도 배수)', () => {
+    const net = netOf(cfg(), [hole(1, 3, [1, 3, 3, 3], { multiplier: 2 })])
+    // 타수차: 각자 2타 × 5000 × 2 = 20000 / 이글값 10000 × 2 = 20000씩
     expect(net.p1).toBe(3 * 20000 + 3 * 20000)
     expectSumZero(net)
   })
 
   it('배판 시 보너스 배수 미적용 옵션', () => {
-    const s = settle(cfg({ doubleRule: { bonusAffected: false, onMajorityTie: false } }), [
-      hole(1, 4, [4, 4, 4, 4]), // 전원 동타 → 다음홀 배판
-      hole(2, 4, [3, 4, 4, 4]),
+    const s = settle(cfg({ doubleRule: { bonusAffected: false, doubleParExempt: false } }), [
+      hole(1, 4, [3, 4, 4, 4], { multiplier: 2 }),
     ])
-    const birdie = s.holes[1].transfers.filter((t) => t.reason === 'birdie')
+    const birdie = s.holes[0].transfers.filter((t) => t.reason === 'birdie')
     expect(birdie.every((t) => t.amount === 5000)).toBe(true) // 배수 없이 원래 금액
-    const stroke = s.holes[1].transfers.filter((t) => t.reason === 'stroke')
+    const stroke = s.holes[0].transfers.filter((t) => t.reason === 'stroke')
     expect(stroke.every((t) => t.amount === 10000)).toBe(true) // 타수차는 ×2
   })
 })
@@ -291,33 +268,6 @@ describe('롱기스트 (홀별 설정)', () => {
   })
 })
 
-describe('배판 상한 홀별 변경 (capOverride)', () => {
-  it('상한을 올린 홀부터 라운드 끝까지 적용', () => {
-    // 기본 상한 ×4. 트리거 3개(전홀 버디 2 + 당홀 묻고더블)면 원래 ×4에서 컷
-    const c = cfg({ doubleRule: { onMajorityTie: false } })
-    const holes = [
-      hole(1, 4, [3, 3, 4, 5]), // 버디 2개 → 다음홀 트리거 2
-      hole(2, 4, [3, 3, 4, 5], { capOverride: 8, manualDouble: true }), // 트리거 3 → ×8
-      hole(3, 4, [4, 5, 6, 7], { manualDouble: true }), // 전홀 버디 2 + 콜 = 트리거 3 → 상한 유지 ×8
-    ]
-    const s = settle(c, holes)
-    expect(s.holes[1].multiplier).toBe(8)
-    expect(s.holes[2].multiplier).toBe(8)
-    // 오버라이드 없었다면 ×4에서 컷
-    const noOverride = settle(c, [holes[0], { ...holes[1], capOverride: undefined }, holes[2]])
-    expect(noOverride.holes[1].multiplier).toBe(4)
-    expect(noOverride.holes[2].multiplier).toBe(4)
-  })
-
-  it('미리보기도 변경된 상한 반영', () => {
-    const c = cfg({ doubleRule: { onMajorityTie: false } })
-    const holes = [
-      hole(1, 4, [3, 3, 4, 5]), // 이월 트리거 2
-      hole(2, 4, [0, 0, 0, 0], { capOverride: 8, manualDouble: true }), // 미입력
-    ]
-    expect(previewMultiplier(c, holes, 2)).toBe(8)
-  })
-})
 
 describe('양파(더블파)', () => {
   it('양파 이상은 항상 더블파로 컷해서 정산', () => {
@@ -327,12 +277,10 @@ describe('양파(더블파)', () => {
   })
 
   it('양파자 배판 면제: 배판 홀에서 양파자가 낀 쌍은 민판', () => {
-    const s = settle(cfg({ doubleRule: { doubleParExempt: true, onMajorityTie: false } }), [
-      hole(1, 4, [3, 4, 4, 4]), // p1 버디 → 다음홀 ×2
-      hole(2, 4, [4, 8, 5, 5]), // p2 양파
+    const s = settle(cfg({ doubleRule: { bonusAffected: true, doubleParExempt: true } }), [
+      hole(1, 4, [4, 8, 5, 5], { multiplier: 2 }), // p2 양파
     ])
-    expect(s.holes[1].multiplier).toBe(2)
-    const t = s.holes[1].transfers
+    const t = s.holes[0].transfers
     // p2가 낀 쌍은 ×1: p2→p1 4타=20000, p2→p3 3타=15000, p2→p4 3타=15000
     expect(t.find((x) => x.from === 'p2' && x.to === 'p1')?.amount).toBe(20000)
     expect(t.find((x) => x.from === 'p2' && x.to === 'p3')?.amount).toBe(15000)
@@ -366,20 +314,6 @@ describe('하우스 리밋', () => {
   })
 })
 
-describe('배수 미리보기 (previewMultiplier)', () => {
-  it('전홀 버디 후 미입력 홀 → ×2, 수동 콜 추가 → ×4', () => {
-    const holes = [hole(1, 4, [3, 4, 5, 6]), hole(2, 4, [0, 0, 0, 0])]
-    expect(previewMultiplier(cfg(), holes, 2)).toBe(2)
-    const withCall = [holes[0], { ...holes[1], manualDouble: true }]
-    expect(previewMultiplier(cfg(), withCall, 2)).toBe(4)
-  })
-
-  it('스킵 예정 홀은 항상 ×1', () => {
-    const holes = [hole(1, 4, [3, 4, 5, 6]), hole(2, 4, [0, 0, 0, 0], { skipBetting: true })]
-    expect(previewMultiplier(cfg(), holes, 2)).toBe(1)
-  })
-})
-
 describe('불변식·정산 요약', () => {
   it('복합 라운드에서 전체 손익 합은 항상 0', () => {
     const c = cfg({ handicaps: { p4: 2 } })
@@ -388,7 +322,7 @@ describe('불변식·정산 요약', () => {
       hole(2, 5, [5, 6, 7, 4], { longestWinner: 'p2', longestRule: { amount: 5000 } }),
       hole(3, 3, [2, 3, 4, 6], { nearestWinner: 'p1', nearestRule: NEAR_CASH }),
       hole(4, 4, [4, 4, 4, 4], { skipBetting: true }),
-      hole(5, 4, [8, 7, 3, 4], { manualDouble: true, capOverride: 8 }),
+      hole(5, 4, [8, 7, 3, 4], { multiplier: 8 }),
     ])
     expectSumZero(s.netByPlayer)
     for (const h of s.holes) expectSumZero(h.netByPlayer)

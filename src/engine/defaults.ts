@@ -12,14 +12,8 @@ export function defaultConfig(players: Player[] = defaultPlayers()): RuleConfig 
     eagleBonus: 10000,
     albatrossBonus: 0,
     handicaps: {},
+    // 배수는 자동 판정 없이 홀에서 직접 선택 (×1/×2/×4/…)
     doubleRule: {
-      onBirdie: true,
-      onBigNumber: true,
-      onMajorityTie: true,
-      onAllTie: true,
-      allowManualCall: true,
-      maxMultiplier: 4,
-      stacking: true,
       bonusAffected: true,
       doubleParExempt: false,
     },

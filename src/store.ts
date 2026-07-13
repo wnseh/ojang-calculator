@@ -65,9 +65,8 @@ export type Action =
   | { type: 'SET_LONGEST'; holeNo: number; playerId: string | null }
   | { type: 'SET_NEAREST_RULE'; holeNo: number; rule: NearestHoleRule | null }
   | { type: 'SET_LONGEST_RULE'; holeNo: number; rule: LongestHoleRule | null }
-  | { type: 'SET_CAP_OVERRIDE'; holeNo: number; cap: number }
+  | { type: 'SET_MULTIPLIER'; holeNo: number; multiplier: number }
   | { type: 'TOGGLE_SKIP'; holeNo: number }
-  | { type: 'TOGGLE_MANUAL_DOUBLE'; holeNo: number }
   | { type: 'SET_MEMO'; memo: string }
   | { type: 'REORDER_PLAYERS'; order: string[] }
   | { type: 'DISMISS_TEE_ORDER' }
@@ -174,20 +173,18 @@ export function reducer(state: AppState, action: Action): AppState {
           longestWinner: action.rule ? h.longestWinner : null,
         })),
       }
-    case 'SET_CAP_OVERRIDE':
+    case 'SET_MULTIPLIER':
       return {
         ...state,
-        holes: updateHole(state.holes, action.holeNo, (h) => ({ ...h, capOverride: action.cap })),
+        holes: updateHole(state.holes, action.holeNo, (h) => ({
+          ...h,
+          multiplier: Math.max(1, Math.round(action.multiplier)),
+        })),
       }
     case 'TOGGLE_SKIP':
       return {
         ...state,
         holes: updateHole(state.holes, action.holeNo, (h) => ({ ...h, skipBetting: !h.skipBetting })),
-      }
-    case 'TOGGLE_MANUAL_DOUBLE':
-      return {
-        ...state,
-        holes: updateHole(state.holes, action.holeNo, (h) => ({ ...h, manualDouble: !h.manualDouble })),
       }
     case 'SET_MEMO':
       return { ...state, memo: action.memo }

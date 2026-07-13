@@ -18,8 +18,8 @@ describe('누적 전적 집계', () => {
     const entries = [
       // 라운드1: p1 +5000 / p2 -15000 / p3 +45000 / p4 -35000
       entry('1', [hole(1, 4, [4, 5, 3, 6])]),
-      // 라운드2: 3명 동타 당홀 ×2 → p1 -30000 / 나머지 +10000
-      entry('2', [hole(1, 4, [5, 4, 4, 4])]),
+      // 라운드2: 배판 ×2 직접 선택 → p1 -30000 / 나머지 +10000
+      entry('2', [{ ...hole(1, 4, [5, 4, 4, 4]), multiplier: 2 }]),
     ]
     const totals = aggregateTotals(entries)
     const byName = Object.fromEntries(totals.map((t) => [t.name, t]))

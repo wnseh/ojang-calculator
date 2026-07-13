@@ -1,5 +1,4 @@
 import type {
-  DoubleRule,
   HoleResult,
   HoleSettlement,
   RuleConfig,
@@ -16,60 +15,120 @@ export function isHoleComplete(config: RuleConfig, hole: HoleResult): boolean {
   })
 }
 
-function multiplierFromTriggers(triggers: number, rule: DoubleRule, cap: number): number {
-  if (triggers <= 0) return 1
-  let m = rule.stacking ? 2 ** triggers : 2
-  if (cap > 0) m = Math.min(m, cap)
-  return m
-}
-
-/** 해당 홀에 적용되는 배판 상한 — 그 홀 이전(포함)의 마지막 변경값, 없으면 시작 상한 */
-export function effectiveCap(config: RuleConfig, holes: HoleResult[], holeNo: number): number {
-  let cap = config.doubleRule.maxMultiplier
-  for (const h of [...holes].sort((a, b) => a.holeNo - b.holeNo)) {
-    if (h.holeNo > holeNo) break
-    if (h.capOverride != null) cap = h.capOverride
-  }
-  return cap
-}
-
 function zeroNet(config: RuleConfig): Record<string, number> {
   const net: Record<string, number> = {}
   for (const p of config.players) net[p.id] = 0
   return net
 }
 
-/** 홀 자체 조건(이월 제외)으로 발생하는 트리거 수. 동타 트리거는 스코어가 있어야 판정 가능 */
-function staticTriggers(config: RuleConfig, hole: HoleResult): number {
-  return hole.manualDouble && config.doubleRule.allowManualCall ? 1 : 0
-}
-
-function isSkipped(_config: RuleConfig, hole: HoleResult): boolean {
+function isSkipped(hole: HoleResult): boolean {
   return !!hole.skipBetting
 }
 
+/** 홀의 정산용 타수 계산에 쓰는 공통 헬퍼 (양파 컷 + 니어 1타 차감) */
+function resolveNearest(config: RuleConfig, hole: HoleResult) {
+  const nearestRule =
+    hole.nearestRule !== undefined
+      ? hole.nearestRule
+      : config.nearest?.enabled
+        ? config.nearest
+        : null
+  const nearestValid =
+    hole.par === 3 &&
+    !!nearestRule &&
+    !!hole.nearestWinner &&
+    (!nearestRule.requireParSave || hole.strokes[hole.nearestWinner] <= hole.par)
+  return { nearestRule, nearestValid }
+}
+
+function effStrokes(config: RuleConfig, hole: HoleResult): (id: string) => number {
+  const dp = hole.par * 2
+  const { nearestRule, nearestValid } = resolveNearest(config, hole)
+  return (id: string) =>
+    Math.min(hole.strokes[id], dp) -
+    (nearestValid && nearestRule?.mode === 'strokeMinus' && id === hole.nearestWinner ? 1 : 0)
+}
+
+/** 구버전(자동 배판 트리거) 설정으로 저장된 라운드인지 */
+function isLegacyConfig(config: RuleConfig): boolean {
+  return typeof config.doubleRule.maxMultiplier === 'number'
+}
+
 /**
- * 정산 엔진 (순수 함수). 홀 순서대로 배판 상태를 굴리며 전체를 매번 재계산한다.
- * - 미입력 홀: 정산 없음, 이월 트리거는 유지 (아직 안 친 홀 취급)
- * - 스킵 홀: 정산 없음, 이월 트리거 소멸, 새 트리거 미발생
+ * 구버전 기록 호환: 예전 자동 배판 로직(버디/양파/동타 트리거, 이월, 상한, 묻고 더블)으로
+ * 홀별 배수를 계산한다. 새 라운드는 홀에서 배수를 직접 선택하므로 이 경로를 타지 않는다.
+ */
+function computeLegacyMultipliers(config: RuleConfig, holes: HoleResult[]): Map<number, number> {
+  const rule = config.doubleRule
+  const players = config.players
+  const result = new Map<number, number>()
+  let carry = 0
+  let cap = rule.maxMultiplier ?? 0
+
+  const fromTriggers = (triggers: number): number => {
+    if (triggers <= 0) return 1
+    let m = rule.stacking ? 2 ** triggers : 2
+    if (cap > 0) m = Math.min(m, cap)
+    return m
+  }
+
+  for (const hole of [...holes].sort((a, b) => a.holeNo - b.holeNo)) {
+    if (hole.capOverride != null) cap = hole.capOverride
+    const played = isHoleComplete(config, hole)
+    if (!played) {
+      result.set(hole.holeNo, 1)
+      continue // 미입력 홀: 이월 유지
+    }
+    if (isSkipped(hole)) {
+      carry = 0 // 스킵 홀에서 배판 리셋
+      result.set(hole.holeNo, 1)
+      continue
+    }
+
+    const eff = effStrokes(config, hole)
+    const gross = (id: string) => hole.strokes[id]
+    const dp = hole.par * 2
+
+    let triggers = carry + (hole.manualDouble && rule.allowManualCall ? 1 : 0)
+    if (rule.onMajorityTie && players.length >= 3) {
+      const counts = new Map<number, number>()
+      for (const p of players) counts.set(eff(p.id), (counts.get(eff(p.id)) ?? 0) + 1)
+      if ([...counts.values()].includes(players.length - 1)) triggers++
+    }
+    result.set(hole.holeNo, fromTriggers(triggers))
+
+    let nextCarry = 0
+    if (rule.onBirdie) nextCarry += players.filter((p) => gross(p.id) - hole.par <= -1).length
+    if (rule.onBigNumber) nextCarry += players.filter((p) => gross(p.id) >= dp - 1).length
+    if (rule.onAllTie) {
+      const vals = players.map((p) => eff(p.id))
+      if (vals.every((v) => v === vals[0])) nextCarry++
+    }
+    carry = nextCarry
+  }
+  return result
+}
+
+/**
+ * 정산 엔진 (순수 함수). 전체를 매번 재계산한다.
+ * - 배수는 홀에서 직접 선택한 값(hole.multiplier, 기본 ×1)을 쓴다.
+ *   구버전 기록(자동 배판 설정)은 예전 로직으로 배수를 복원해 호환.
+ * - 미입력 홀/스킵 홀: 정산 없음
  */
 export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
   const players = config.players
   const rule = config.doubleRule
   const holeSettlements: HoleSettlement[] = []
   const net = zeroNet(config)
-  let carry = 0 // 다음 홀로 이월된 트리거 수
-  let cap = rule.maxMultiplier // 배판 상한 — 홀에서 변경하면 그 홀부터 적용
+  const legacy = isLegacyConfig(config) ? computeLegacyMultipliers(config, holes) : null
 
   const sorted = [...holes].sort((a, b) => a.holeNo - b.holeNo)
 
   for (const hole of sorted) {
-    if (hole.capOverride != null) cap = hole.capOverride
-    const skipped = isSkipped(config, hole)
+    const skipped = isSkipped(hole)
     const played = isHoleComplete(config, hole)
 
     if (!played || skipped) {
-      if (played && skipped) carry = 0 // 스킵 홀을 지나면 배판 리셋
       holeSettlements.push({
         holeNo: hole.holeNo,
         played,
@@ -84,43 +143,17 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
     const par = hole.par
     const dp = par * 2 // 양파(더블파)
     const gross = (id: string) => hole.strokes[id]
-    // 오장에서 양파 이상은 없다 — 항상 더블파로 컷
-    const cut = (id: string) => Math.min(gross(id), dp)
-
-    // 니어/롱기 조건: 홀에서 정한 값 우선, 미정(undefined)이면 구버전 config 폴백
-    const nearestRule =
-      hole.nearestRule !== undefined
-        ? hole.nearestRule
-        : config.nearest?.enabled
-          ? config.nearest
-          : null
+    const { nearestRule, nearestValid } = resolveNearest(config, hole)
     const longestRule =
       hole.longestRule !== undefined
         ? hole.longestRule
         : config.longest?.enabled
           ? config.longest
           : null
+    const eff = effStrokes(config, hole)
 
-    const nearestValid =
-      par === 3 &&
-      !!nearestRule &&
-      !!hole.nearestWinner &&
-      (!nearestRule.requireParSave || gross(hole.nearestWinner) <= par)
-
-    // 정산용 타수: 양파 컷 + 니어 1타 차감 모드
-    const eff = (id: string) =>
-      cut(id) -
-      (nearestValid && nearestRule?.mode === 'strokeMinus' && id === hole.nearestWinner ? 1 : 0)
-
-    // 배수 결정: 이월 + 당홀(수동 콜 / (인원-1)명 동타)
-    let triggers = carry + staticTriggers(config, hole)
-    if (rule.onMajorityTie && players.length >= 3) {
-      const counts = new Map<number, number>()
-      for (const p of players) counts.set(eff(p.id), (counts.get(eff(p.id)) ?? 0) + 1)
-      // 4인이면 3명 동타, 3인이면 2명 동타 (전원 동타는 별도 규칙)
-      if ([...counts.values()].includes(players.length - 1)) triggers++
-    }
-    const mult = multiplierFromTriggers(triggers, rule, cap)
+    // 이 홀의 배수: 직접 선택한 값 > 구버전 자동 계산 > ×1
+    const mult = hole.multiplier ?? legacy?.get(hole.holeNo) ?? 1
 
     const transfers: Transfer[] = []
     const push = (from: string, to: string, amount: number, reason: TransferReason) => {
@@ -182,16 +215,6 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
     }
     for (const p of players) net[p.id] += holeNet[p.id]
 
-    // 다음홀 이월 트리거 계산
-    let nextCarry = 0
-    if (rule.onBirdie) nextCarry += players.filter((p) => gross(p.id) - par <= -1).length
-    if (rule.onBigNumber) nextCarry += players.filter((p) => gross(p.id) >= dp - 1).length
-    if (rule.onAllTie) {
-      const vals = players.map((p) => eff(p.id))
-      if (vals.every((v) => v === vals[0])) nextCarry++
-    }
-    carry = nextCarry
-
     holeSettlements.push({
       holeNo: hole.holeNo,
       played: true,
@@ -225,7 +248,9 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
   if (config.houseLimit != null && config.houseLimit > 0) {
     for (const p of players) {
       if (net[p.id] <= -config.houseLimit)
-        warnings.push(`${p.name}님이 손실 상한(${config.houseLimit.toLocaleString('ko-KR')}원)에 도달했습니다.`)
+        warnings.push(
+          `${p.name}님이 손실 상한(${config.houseLimit.toLocaleString('ko-KR')}원)에 도달했습니다.`,
+        )
     }
   }
 
@@ -234,32 +259,8 @@ export function settle(config: RuleConfig, holes: HoleResult[]): Settlement {
     handicapTransfers,
     netByPlayer: net,
     minimalTransfers: minimizeTransfers(net),
-    nextMultiplier: multiplierFromTriggers(carry, rule, cap),
-    nextTriggers: carry,
     warnings,
   }
-}
-
-/**
- * 특정 홀에 적용될 배수 미리보기 (홀 입력 화면 뱃지용).
- * 스코어 미입력 홀은 이월 + 당홀 정적 조건(수동 콜)만 반영 — 동타 배판은 입력 후 확정.
- */
-export function previewMultiplier(config: RuleConfig, holes: HoleResult[], holeNo: number): number {
-  const target = holes.find((h) => h.holeNo === holeNo)
-  if (!target) return 1
-  if (isSkipped(config, target)) return 1
-  if (isHoleComplete(config, target)) {
-    const s = settle(config, holes)
-    return s.holes.find((h) => h.holeNo === holeNo)?.multiplier ?? 1
-  }
-  const prior = holes.filter((h) => h.holeNo < holeNo)
-  const s = settle(config, prior)
-  const cap = effectiveCap(config, holes, holeNo)
-  return multiplierFromTriggers(
-    s.nextTriggers + staticTriggers(config, target),
-    config.doubleRule,
-    cap,
-  )
 }
 
 /** 누적 손익을 송금 횟수 최소로 상계 (그리디) */

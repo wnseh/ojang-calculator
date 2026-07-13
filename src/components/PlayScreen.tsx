@@ -1,6 +1,6 @@
 import { useEffect, useState, type Dispatch } from 'react'
 import { BASE_LONGEST_RULE, BASE_NEAREST_RULE } from '../engine/defaults'
-import { effectiveCap, isHoleComplete, previewMultiplier } from '../engine/settlement'
+import { isHoleComplete } from '../engine/settlement'
 import type { Settlement } from '../engine/types'
 import { scoreClass, scoreLabel, signWon } from '../format'
 import type { Action, AppState } from '../store'
@@ -44,7 +44,7 @@ export function PlayScreen({
   const complete = isHoleComplete(config, hole)
   const holeStat = settlement.holes.find((h) => h.holeNo === hole.holeNo)
   const skipped = !!holeStat?.skipped || !!hole.skipBetting
-  const mult = previewMultiplier(config, state.holes, hole.holeNo)
+  const mult = hole.multiplier ?? 1
 
   const setStroke = (playerId: string, strokes: number) =>
     dispatch({ type: 'SET_STROKE', holeNo: hole.holeNo, playerId, strokes })
@@ -386,28 +386,41 @@ export function PlayScreen({
           label="이 홀 내기 제외"
           hint="스코어만 기록하고 정산에서 뺍니다 (배판도 리셋)"
         />
-        {config.doubleRule.allowManualCall && !skipped && (
-          <Toggle
-            checked={!!hole.manualDouble}
-            onChange={() => dispatch({ type: 'TOGGLE_MANUAL_DOUBLE', holeNo: hole.holeNo })}
-            label="묻고 더블 (수동 배판)"
-          />
+        {!skipped && (
+          <>
+            <Row label="이 홀 배수">
+              <div className="stepper">
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  disabled={mult <= 1}
+                  onClick={() =>
+                    dispatch({
+                      type: 'SET_MULTIPLIER',
+                      holeNo: hole.holeNo,
+                      multiplier: Math.max(1, mult / 2),
+                    })
+                  }
+                >
+                  ½
+                </button>
+                <span className={`stepper-value ${mult > 1 ? 'mult-on' : ''}`}>×{mult}</span>
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  onClick={() =>
+                    dispatch({ type: 'SET_MULTIPLIER', holeNo: hole.holeNo, multiplier: mult * 2 })
+                  }
+                >
+                  ×2
+                </button>
+              </div>
+            </Row>
+            <p className="hint">
+              배판이면 ×2, 배배판이면 ×4 … 홀마다 직접 정합니다. 기본은 민판(×1).
+            </p>
+          </>
         )}
-        <Row label="배판 상한">
-          <Segmented
-            value={effectiveCap(config, state.holes, hole.holeNo)}
-            options={[
-              { value: 2, label: '×2' },
-              { value: 4, label: '×4' },
-              { value: 8, label: '×8' },
-              { value: 0, label: '무제한' },
-            ]}
-            onChange={(v) => dispatch({ type: 'SET_CAP_OVERRIDE', holeNo: hole.holeNo, cap: v })}
-          />
-        </Row>
-        <p className="hint">
-          상한을 바꾸면 <b>이 홀부터 라운드 끝까지</b> 적용됩니다 (예: 막판 배배배판 ×8).
-        </p>
       </section>
 
       {complete && holeStat && (

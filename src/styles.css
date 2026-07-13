@@ -523,6 +523,18 @@ textarea {
   color: var(--switch-off);
 }
 
+span.stepper-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stepper-value.mult-on {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-color: var(--amber-bg);
+}
+
 /* ---------- chips ---------- */
 .chip-group {
   display: flex;

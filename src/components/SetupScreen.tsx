@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { defaultConfig, defaultPlayers } from '../engine/defaults'
 import type { RuleConfig } from '../engine/types'
 import { loadRulePresets, saveRulePresets, type LocalRulePreset } from '../localrules'
-import { MoneyInput, Row, Section, Segmented, Toggle } from './controls'
+import { MoneyInput, Row, Section, Segmented } from './controls'
 import { ThemeToggle } from './ThemeToggle'
 
 export function SetupScreen({
@@ -42,8 +42,6 @@ export function SetupScreen({
   }
 
   const set = (patch: Partial<RuleConfig>) => setConfig((c) => ({ ...c, ...patch }))
-  const setDouble = (patch: Partial<RuleConfig['doubleRule']>) =>
-    setConfig((c) => ({ ...c, doubleRule: { ...c.doubleRule, ...patch } }))
 
   const setPlayerCount = (n: number) =>
     setConfig((c) => {
@@ -168,70 +166,6 @@ export function SetupScreen({
         <Row label="알바/홀인원값">
           <MoneyInput value={config.albatrossBonus} onChange={(v) => set({ albatrossBonus: v })} />
         </Row>
-      </Section>
-
-      <Section title="배판 조건">
-        <Toggle
-          checked={config.doubleRule.onBirdie}
-          onChange={(v) => setDouble({ onBirdie: v })}
-          label="버디 → 다음홀 배판"
-        />
-        <Toggle
-          checked={config.doubleRule.onBigNumber}
-          onChange={(v) => setDouble({ onBigNumber: v })}
-          label="양파·양파직전 → 다음홀 배판"
-          hint="파3 더블보기 / 파4 트리플 / 파5 쿼드 이상"
-        />
-        <Toggle
-          checked={config.doubleRule.onMajorityTie}
-          onChange={(v) => setDouble({ onMajorityTie: v })}
-          label={`${config.players.length - 1}명 동타 → 당홀 배판`}
-          hint={config.players.length === 4 ? '4인: 3명 동타 시' : '3인: 2명 동타 시'}
-        />
-        <Toggle
-          checked={config.doubleRule.onAllTie}
-          onChange={(v) => setDouble({ onAllTie: v })}
-          label="전원 동타 → 다음홀 배판"
-        />
-        <Toggle
-          checked={config.doubleRule.allowManualCall}
-          onChange={(v) => setDouble({ allowManualCall: v })}
-          label="수동 배판 콜 허용"
-          hint="묻고 더블"
-        />
-        <Row label="배판 상한 (시작)">
-          <Segmented
-            value={config.doubleRule.maxMultiplier}
-            options={[
-              { value: 2, label: '×2' },
-              { value: 4, label: '×4' },
-              { value: 8, label: '×8' },
-              { value: 0, label: '무제한' },
-            ]}
-            onChange={(v) => setDouble({ maxMultiplier: v })}
-          />
-        </Row>
-        <p className="hint">
-          상한은 라운드 중 홀 입력 화면에서 올릴 수 있습니다 (변경한 홀부터 적용). 니어·롱기는
-          파3/파5 홀에서 그때그때 정합니다.
-        </p>
-        <Toggle
-          checked={config.doubleRule.stacking}
-          onChange={(v) => setDouble({ stacking: v })}
-          label="조건 중첩 시 곱연산"
-          hint="트리거 2개면 ×4 (끄면 항상 ×2)"
-        />
-        <Toggle
-          checked={config.doubleRule.bonusAffected}
-          onChange={(v) => setDouble({ bonusAffected: v })}
-          label="배판 시 버디값·니어값도 배수"
-        />
-        <Toggle
-          checked={config.doubleRule.doubleParExempt}
-          onChange={(v) => setDouble({ doubleParExempt: v })}
-          label="양파자 배판 면제"
-          hint="배판 홀에서 양파 친 사람이 낀 쌍은 민판"
-        />
       </Section>
 
       <Section title="로컬룰 (확인용)">
