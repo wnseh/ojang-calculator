@@ -583,12 +583,6 @@ span.stepper-value {
   font-weight: 800;
 }
 
-.net-total {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
 .stepper-btn:disabled {
   opacity: 0.35;
 }
@@ -616,14 +610,16 @@ span.stepper-value {
   padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
 }
 
-.net-strip {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  font-size: 13px;
-  color: var(--muted);
-  padding-bottom: 8px;
-  white-space: nowrap;
+.totals-toggle {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--accent2);
+  font-weight: 700;
+  font-size: 14px;
+  text-align: left;
+  padding: 10px 0 6px;
 }
 
 .footer-nav {

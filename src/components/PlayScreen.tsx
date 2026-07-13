@@ -20,6 +20,7 @@ export function PlayScreen({
   const config = state.config!
   const [showOrder, setShowOrder] = useState(false)
   const [showRules, setShowRules] = useState(false)
+  const [showTotals, setShowTotals] = useState(false)
   const hole = state.holes.find((h) => h.holeNo === state.currentHole)
 
   // 파3/파5 홀에 처음 들어오면, 이전 홀에서 정한 니어/롱기 조건을 디폴트로 깔아준다
@@ -425,42 +426,50 @@ export function PlayScreen({
 
       {complete && holeStat && (
         <section className="card">
-          <h2>{skipped ? '이 홀 내기 제외 · 누적 손익' : '이 홀 손익 · 누적 손익'}</h2>
-          <div className="net-grid">
-            {config.players.map((p) => {
-              const v = holeStat.netByPlayer[p.id] ?? 0
-              const total = settlement.netByPlayer[p.id] ?? 0
-              return (
-                <div key={p.id} className="net-cell">
-                  <span className="net-name">{p.name}</span>
-                  {!skipped && (
-                    <span className={`net-value ${v > 0 ? 'plus' : v < 0 ? 'minus' : ''}`}>
-                      {signWon(v)}
+          {!skipped && (
+            <>
+              <h2>이 홀 손익</h2>
+              <div className="net-grid">
+                {config.players.map((p) => {
+                  const v = holeStat.netByPlayer[p.id] ?? 0
+                  return (
+                    <div key={p.id} className="net-cell">
+                      <span className="net-name">{p.name}</span>
+                      <span className={`net-value ${v > 0 ? 'plus' : v < 0 ? 'minus' : ''}`}>
+                        {signWon(v)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+          <button
+            type="button"
+            className="totals-toggle"
+            onClick={() => setShowTotals(!showTotals)}
+          >
+            {showTotals ? '▾ 누적 손익 접기' : '▸ 누적 손익 보기'}
+          </button>
+          {showTotals && (
+            <div className="net-grid">
+              {config.players.map((p) => {
+                const total = settlement.netByPlayer[p.id] ?? 0
+                return (
+                  <div key={p.id} className="net-cell">
+                    <span className="net-name">{p.name}</span>
+                    <span className={`net-value ${total > 0 ? 'plus' : total < 0 ? 'minus' : ''}`}>
+                      {signWon(total)}
                     </span>
-                  )}
-                  <span className="net-total">
-                    누적{' '}
-                    <b className={total > 0 ? 'plus' : total < 0 ? 'minus' : ''}>{signWon(total)}</b>
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </section>
       )}
 
       <footer className="play-footer">
-        <div className="net-strip">
-          {config.players.map((p) => {
-            const v = settlement.netByPlayer[p.id] ?? 0
-            return (
-              <span key={p.id} className="net-strip-item">
-                {p.name}{' '}
-                <b className={v > 0 ? 'plus' : v < 0 ? 'minus' : ''}>{signWon(v)}</b>
-              </span>
-            )
-          })}
-        </div>
         <div className="footer-nav">
           <button
             type="button"
